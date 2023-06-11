@@ -2,8 +2,6 @@ import zhinst.core as zi
 import numpy as np
 import time
 
-
-
 class zi_MFLI:
 
     def __init__(self,
