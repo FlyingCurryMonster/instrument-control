@@ -1,0 +1,11 @@
+#Procedure: <__main__.zurich_sr830_fsweep>
+#Parameters:
+#	Delay (s): 1
+#	Drive Amplitude (Vpp): 4
+#	stop frequency (Hz): 22340
+#	start frequency (Hz): 22300
+#	Frequency Step (Hz): 1
+#	SR830 addr.: 2::25
+#	Zurich addr.: dev4934
+#Data:
+UTC,timestamp,f,X_zur,Y_zur,X_sr,Y_sr
