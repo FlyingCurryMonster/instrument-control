@@ -109,7 +109,7 @@ class zurich_graph(ManagedWindow):
 
     def queue(self):
         directory = self.directory
-        filename = unique_filename(directory, prefix = 'TO_magnet')
+        filename = unique_filename(directory, prefix = 'zurich-sr830')
         
         procedure = self.make_procedure()
         results = Results(procedure, filename)
