@@ -28,9 +28,9 @@ import pyvisa
 
 class lockin_reader(Procedure):
 
-    delay = FloatParameter('delay', units = 's', default = 0.2)
-    sr830bus = IntegerParameter('SR830 bus', default = 0)
-    sr830addr = IntegerParameter('SR830 address', default = 12)
+    delay = FloatParameter('delay', units = 's', default = 1)
+    sr830bus = IntegerParameter('SR830 bus', default = 2)
+    sr830addr = IntegerParameter('SR830 address', default = 25)
     DATA_COLUMNS = ['UTC', 'timestamp', 'X channel', 'Y channel']
 
     def startup(self):
@@ -44,7 +44,7 @@ class lockin_reader(Procedure):
     def execute (self):
         lockin = self.lockin_amp
         while True:
-            x, y = lockin.xy
+            x, y = lockin.x, lockin.y
             data = {
                 'UTC': time.time(),
                 'timestamp': time.time()-self.t0,
