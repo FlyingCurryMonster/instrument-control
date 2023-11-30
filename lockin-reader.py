@@ -38,13 +38,33 @@ class lockin_reader(Procedure):
         sr830_full_address = 'GPIB{x}::{y}::INSTR'.format(x=self.sr830bus, y=self.sr830addr)
         log.info(sr830_full_address)
         log.info('Starting lockin reader')
-        self.lockin_amp = SR830(sr830_full_address)
-        self.t0 = time.time()
+        self.lockin = SR830(sr830_full_address)
 
     def execute (self):
-        lockin = self.lockin_amp
+        self.buffer_execute()
+        # self.t0 = time.time()
+
+        # lockin = self.lockin
+        # while True:
+        #     x, y = lockin.x, lockin.y
+        #     data = {
+        #         'UTC': time.time(),
+        #         'timestamp': time.time()-self.t0,
+        #         'X channel': x,
+        #         'Y channel': y,
+        #     }
+        #     self.emit('results', data)
+        #     sleep(self.delay)
+
+        #     if self.should_stop():
+        #         log.warning('Caught the stop flag in the procedure')
+        #         break
+    
+    def buffer_execute(self):
+        self.lockin.sample_frequency = 128
+        self.t0 = time.time()
         while True:
-            x, y = lockin.x, lockin.y
+            x, y = self.buffer_measure_float()
             data = {
                 'UTC': time.time(),
                 'timestamp': time.time()-self.t0,
@@ -57,7 +77,23 @@ class lockin_reader(Procedure):
             if self.should_stop():
                 log.warning('Caught the stop flag in the procedure')
                 break
-
+        return
+    
+    def buffer_measure_binary(self):
+        self.lockin.reset_buffer()
+        self.lockin.start_buffer()
+        self.lockin.wait_for_buffer(self.lockin.sample_frequency*10)
+        xbuf =self.lockin.get_buffer_binary(1)
+        ybuf = self.lockin.get_buffer_binary(2)
+        return xbuf.mean(), ybuf.mean()
+    
+    def buffer_measure_float(self):
+        self.lockin.reset_buffer()
+        self.lockin.start_buffer()
+        self.lockin.wait_for_buffer(self.lockin.sample_frequency*1)
+        xbuf =self.lockin.get_buffer_float(1)
+        ybuf = self.lockin.get_buffer_float(2)
+        return xbuf.mean(), ybuf.mean()
 class lockin_graph(ManagedWindow):
     
     def __init__(self):

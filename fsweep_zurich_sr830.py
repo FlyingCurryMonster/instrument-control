@@ -65,7 +65,8 @@ class zurich_sr830_fsweep(Procedure):
             ts = utc_time - self.t_start
             xzur, yzur, freq_meas = self.zurich_sample_read()
             log.info('Zurich frequency set to ={}'.format(freq_meas))
-            xsr, ysr = self.sr830.x, self.sr830.y
+            # xsr, ysr = self.sr830.x, self.sr830.y
+            xsr, ysr = self.sr830.xy
             data = {
                 'UTC': utc_time,
                 'timestamp': ts,

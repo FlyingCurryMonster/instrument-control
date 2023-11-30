@@ -1,0 +1,7 @@
+#Procedure: <__main__.lockin_reader>
+#Parameters:
+#	delay: 1 s
+#	SR830 address: 25
+#	SR830 bus: 2
+#Data:
+UTC,timestamp,X channel,Y channel
