@@ -20,6 +20,7 @@ class ds345_sr830_fsweep(Procedure):
     f_final = FloatParameter('stop frequency (Hz)', default = 1200)
     f_step = FloatParameter('Frequency Step (Hz)', default = 1)
     delay = FloatParameter('Delay (s)', default = 1)
+    buffer_time = FloatParameter('Buffer measure time (s)', default = 3)
 
     ds345_id = Parameter('DS345 addr', default = '2::16')
     sr830_id = Parameter('SR830 addr.', default = '2::25')
@@ -46,7 +47,8 @@ class ds345_sr830_fsweep(Procedure):
         self.t_start = time.time()
 
         self.fgen.frequency = self.freq[0]
-        time.sleep(self.delay*5)
+        self.fgen.amp_pp = self.drive_amp
+        time.sleep(self.delay)
     def execute(self):
         for i, f in enumerate(self.freq):
             self.fgen.frequency = f
@@ -54,8 +56,8 @@ class ds345_sr830_fsweep(Procedure):
             utc_time = time.time()
             ts = utc_time - self.t_start
             freq_meas = self.fgen.frequency
-            log.info('DS345 frequency set to ={}'.format(freq_meas))
-            [xsr, sigma_xsr], [ysr, sigma_ysr] = self.sr830.buffer_stats(5)
+            log.info('DS345 frequency set to ={} Hz'.format(freq_meas))
+            [xsr, sigma_xsr], [ysr, sigma_ysr] = self.sr830.buffer_stats(self.buffer_time)
             data = {
                 'UTC': utc_time,
                 'timestamp': ts,

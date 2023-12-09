@@ -27,7 +27,12 @@ class SR830Interface:
 
 
     def buffer_bytes_convert(self, buffer):
-        mant = np.array(list(buffer[0::4])) + np.array(list(buffer[1::4]))*2**8
+        byteproduct = np.array(list(buffer[0::4])) + np.array(list(buffer[1::4]))*2**8
+        divsor, remainder = np.divmod(
+            byteproduct, 
+            32768*np.ones(shape = byteproduct.shape)
+        )
+        mant = remainder - divsor*2**15
         exp = np.array(list(buffer[2::4]))
         return mant*np.power(np.ones(shape = exp.shape)*2, exp-124)
 
