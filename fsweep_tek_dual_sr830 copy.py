@@ -10,10 +10,11 @@ from pymeasure.display.Qt import QtWidgets
 from pymeasure.display.windows import ManagedWindow
 from pymeasure.experiment import Procedure, Results, unique_filename
 from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter
-from ds345 import DS345
+from pymeasure.instruments.tektronix import AFG3152C
 from sr830_buffer import SR830Interface
+import concurrent.futures
 
-class ds345_sr830_fsweep(Procedure):
+class tek_dual_sr830_fsweep(Procedure):
 
     drive_amp = FloatParameter('Drive Amplitude (Vpp)', default = 1)
     f_start = FloatParameter('start frequency (Hz)', default = 500)
@@ -22,27 +23,34 @@ class ds345_sr830_fsweep(Procedure):
     delay = FloatParameter('Delay (s)', default = 1)
     buffer_time = FloatParameter('Buffer measure time (s)', default = 3)
 
-    ds345_id = Parameter('DS345 addr', default = '2::16')
-    sr830_id = Parameter('SR830 addr.', default = '2::25')
+    tek_id = Parameter('DS345 addr', default = '2::16')
+    sr830_id_1 = Parameter('SR830_1 addr.', default = '0::12')
+    sr830_id_2 = Parameter('SR830_2 addr.', default = '2::9')
     
     params = [
         'drive_amp', 'f_start', 'f_final', 'f_step', 'delay',
-        'ds345_id', 'sr830_id',
+        'ds345_id', 'sr830_id', 'sr830_id_2'
     ]
 
-    DATA_COLUMNS = ['UTC', 'timestamp', 'f', 'X_sr', 'sigma_xsr', 'Y_sr', 'sigma_ysr']
+    DATA_COLUMNS = [
+        'UTC', 'timestamp', 'f', 
+        'X_1', 'sigma_x1', 'Y_1', 'sigma_y2', 
+        'X_2', 'sigma_x2', 'Y_2', 'sigma_y2'
+        ]
 
     def startup(self):
-        log.info('Starting frequency sweeper with DS345 drive, and measuring with  SR830')
-        ds345_full_address = f'GPIB{self.ds345_id}::INSTR'
-        sr830_full_address = f'GPIB{self.sr830_id}::INSTR'
-        # sr830_full_address = 'GPIB{}::INSTR'.format(self.sr830_id)
+        log.info('Starting frequency sweeper with DS345 drive, and measuring with two SR830s')
+        tek_full_address = f'GPIB{self.tek_id}::INSTR'
+        sr830_1_full_address = f'GPIB{self.sr830_id_1}::INSTR'
+        sr830_2_full_address = f'GPIB{self.sr830_id_2}::INSTR'
 
-        log.info(f'DS345 address:{ds345_full_address}, SR830 address: {sr830_full_address}')
 
-        self.fgen =DS345(ds345_full_address)
-        # self.sr830 = SR830(sr830_full_address)
-        self.sr830 = SR830Interface(sr830_full_address)
+        log.info(f'Tek address:{tek_full_address}, SR830 1 address: {sr830_1_full_address}, SR830 2 address: {sr830_2_full_address}')
+
+        self.fgen =AFG3152C(tek_full_address)
+        self.lockin_1 = SR830Interface(sr830_1_full_address)
+        self.lockin_2 = SR830Interface(sr830_2_full_address)
+
         self.freq = np.arange(self.f_start, self.f_final+self.f_step, self.f_step,)
         self.t_start = time.time()
 
@@ -56,16 +64,32 @@ class ds345_sr830_fsweep(Procedure):
             utc_time = time.time()
             ts = utc_time - self.t_start
             freq_meas = self.fgen.frequency
-            log.info('DS345 frequency set to ={} Hz'.format(freq_meas))
-            [xsr, sigma_xsr], [ysr, sigma_ysr] = self.sr830.buffer_stats(self.buffer_time)
+            log.info('Tek frequency set to ={} Hz'.format(freq_meas))
+
+            ## parallel measurement
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                meas_1 = executor.submit(self.lockin_1.buffer_stats(self.buffer_time))
+                meas_2 = executor.submit(self.lockin_2.buffer_stats(self.buffer_time))
+
+                # wait for both methods to complete
+                concurrent.futures.wait([meas_1, meas_2])
+
+
+                [x1, sigma_x1], [y1, sigma_y1] = meas_1.result()
+                [x2, sigma_x2], [y2, sigma_y2] = meas_2.result()
+
             data = {
                 'UTC': utc_time,
                 'timestamp': ts,
                 'f': freq_meas,
-                'X_sr': xsr,
-                'sigma_xsr': sigma_xsr,
-                'Y_sr': ysr,
-                'sigma_ysr': sigma_ysr,
+                'X_1': x1,
+                'sigma_x1': sigma_x1,
+                'Y_1': y1,
+                'sigma_y1': sigma_y1,
+                'X_2': x2,
+                'sigma_x2': sigma_x2,
+                'Y_2': y2,
+                'sigma_y2': sigma_y2,                
             }
         
             self.emit('results', data)
@@ -75,25 +99,25 @@ class ds345_sr830_fsweep(Procedure):
                 break    
 
 
-class ds345_sr830_graph(ManagedWindow):
+class tek_dual_sr830_graph(ManagedWindow):
     
     def __init__(self):
 
         super().__init__(
-            procedure_class=ds345_sr830_fsweep,
-            inputs =ds345_sr830_fsweep.params,
-            displays = ds345_sr830_fsweep.params,
+            procedure_class=tek_dual_sr830_fsweep,
+            inputs =tek_dual_sr830_fsweep.params,
+            displays = tek_dual_sr830_fsweep.params,
             x_axis= 'f',
             y_axis = 'X_sr',
             directory_input = True
         )
 
-        self.setWindowTitle('DS345-SR830 measurement window')
-        self.directory =  r'data-files/ds345-sr830'
+        self.setWindowTitle('tek_dual_sr830_fsweep measurement window')
+        self.directory =  r'data-files/tek-dual-sr830'
 
     def queue(self):
         directory = self.directory
-        filename = unique_filename(directory, prefix = 'ds345-sr830')
+        filename = unique_filename(directory, prefix = 'tek_dual_sr830')
         
         procedure = self.make_procedure()
         results = Results(procedure, filename)
@@ -108,7 +132,7 @@ def main():
     # print(pymeasure.__version__)
     
     app = QtWidgets.QApplication(sys.argv)
-    window = ds345_sr830_graph()
+    window = tek_dual_sr830_graph()
     window.show()
     sys.exit(app.exec_()) 
 
