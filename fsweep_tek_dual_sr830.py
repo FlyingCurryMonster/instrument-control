@@ -17,19 +17,19 @@ import concurrent.futures
 class tek_dual_sr830_fsweep(Procedure):
 
     drive_amp = FloatParameter('Drive Amplitude (Vpp)', default = 1)
-    f_start = FloatParameter('start frequency (Hz)', default = 500)
-    f_final = FloatParameter('stop frequency (Hz)', default = 1200)
+    f_start = FloatParameter('start frequency (Hz)', default = 22E3)
+    f_final = FloatParameter('stop frequency (Hz)', default = 24E3)
     f_step = FloatParameter('Frequency Step (Hz)', default = 1)
-    delay = FloatParameter('Delay (s)', default = 1)
-    buffer_time = FloatParameter('Buffer measure time (s)', default = 3)
+    delay = FloatParameter('Delay (s)', default = 3)
+    buffer_time = FloatParameter('Buffer measure time (s)', default = 10)
 
     tek_id = Parameter('DS345 addr', default = '2::16')
     sr830_id_1 = Parameter('SR830_1 addr.', default = '0::12')
     sr830_id_2 = Parameter('SR830_2 addr.', default = '2::9')
     
     params = [
-        'drive_amp', 'f_start', 'f_final', 'f_step', 'delay',
-        'ds345_id', 'sr830_id', 'sr830_id_2'
+        'drive_amp', 'f_start', 'f_final', 'f_step', 'delay', 'buffer_time',
+        'tek_id', 'sr830_id_1', 'sr830_id_2'
     ]
 
     DATA_COLUMNS = [
@@ -67,17 +67,22 @@ class tek_dual_sr830_fsweep(Procedure):
             log.info('Tek frequency set to ={} Hz'.format(freq_meas))
 
             ## parallel measurement
+            log.info('starting parallel measurement')
+            t0_par = time.time()
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                meas_1 = executor.submit(self.lockin_1.buffer_stats(self.buffer_time))
-                meas_2 = executor.submit(self.lockin_2.buffer_stats(self.buffer_time))
+                meas_1 = executor.submit(self.lockin_1.buffer_stats, self.buffer_time)
+                meas_2 = executor.submit(self.lockin_2.buffer_stats, self.buffer_time)
 
                 # wait for both methods to complete
                 concurrent.futures.wait([meas_1, meas_2])
 
+                log.info(f'buffer 1 size is {self.lockin_1.n_buff()}')
+                log.info(f'buffer 2 size is {self.lockin_2.n_buff()}')
 
                 [x1, sigma_x1], [y1, sigma_y1] = meas_1.result()
-                [x2, sigma_x2], [y2, sigma_y2] = meas_2.result()
+                [x2, sigma_x2], [y2, sigma_y2] = meas_2.result()               
 
+            log.info('parallel measurement took {:.3f}s'.format(time.time()-t0_par))
             data = {
                 'UTC': utc_time,
                 'timestamp': ts,
@@ -108,7 +113,7 @@ class tek_dual_sr830_graph(ManagedWindow):
             inputs =tek_dual_sr830_fsweep.params,
             displays = tek_dual_sr830_fsweep.params,
             x_axis= 'f',
-            y_axis = 'X_sr',
+            y_axis = 'X_1',
             directory_input = True
         )
 
