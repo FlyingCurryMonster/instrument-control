@@ -1,0 +1,13 @@
+#Procedure: <__main__.tek_dual_sr830_fsweep>
+#Parameters:
+#	Buffer measure time (s): 3
+#	Delay (s): 3
+#	Drive Amplitude (Vpp): 1
+#	stop frequency (Hz): 24000
+#	start frequency (Hz): 22000
+#	Frequency Step (Hz): 0.1
+#	SR830_1 addr.: 0::12
+#	SR830_2 addr.: 2::9
+#	DS345 addr: 2::16
+#Data:
+UTC,timestamp,f,X_1,sigma_x1,Y_1,sigma_y2,X_2,sigma_x2,Y_2,sigma_y2
