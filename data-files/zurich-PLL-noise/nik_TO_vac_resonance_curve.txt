@@ -1,0 +1,8 @@
+% Module: Sweep, ID: c0p1t10p1cfm0
+% Devices: DEV4934
+% Time: 2023/12/16 15:38:17
+% Demod 1 Sample R, /dev4934/demods/0/sample.R
+% Frequency (Hz), Demod 1 Sample R  Amplitude (V)
+1275.900797176424, 0.0548597279539
+1275.905243503781, 0.0501362199366
+1275.909689831139, 0.0537875610278
