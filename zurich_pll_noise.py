@@ -35,7 +35,7 @@ class zurich_pll_noise(Procedure):
         'ringdown', 'measurement_time', 
         'device_id','comments',
         ]
-    DATA_COLUMNS = ['date', 'timestamp', 'f_zur', 'X', 'Y', ]
+    DATA_COLUMNS = ['utc', 'timestamp', 'f_zur', 'X', 'Y', ]
 
     def startup(self):
         log.info('Starting frequency sweeper with zurich')
@@ -67,7 +67,7 @@ class zurich_pll_noise(Procedure):
         # log.info('measuring')
         X,Y, zur_f = self.zurich_sample_read()
         data = {
-            'Date': dt.now().strftime('%m/%d/%Y %H:%M:%S'),
+            'utc': time.time(),
             'timestamp': time.time()-self.t_meas_start,
             'f_zur': zur_f,
             'X': X,
