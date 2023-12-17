@@ -25,14 +25,14 @@ import zhinst.core
 class zurich_pll_noise(Procedure):
 
     ringdown = FloatParameter('ringdown delay', units = 's', default = 3)
-    measurement_time = FloatParameter('exposure time', units = 'min', default = 60)
+    measurement_time = FloatParameter('measurement time', units = 'min', default = 60)
     
     # sr830addr = Parameter('SR830 addr.', default = '2::9')
     device_id = Parameter('Zurich addr.', default = 'dev4934')
     comments = Parameter('Comment', default = '')
 
     params = [
-        'ringdown', 'exposure_time', 
+        'ringdown', 'measurement_time', 
         'device_id','comments',
         ]
     DATA_COLUMNS = ['date', 'timestamp', 'f_zur', 'X', 'Y', ]
@@ -50,6 +50,7 @@ class zurich_pll_noise(Procedure):
         self.demod_path = f"/{self.device_id}/demods/0/sample"
 
         log.info('drive set to {:.3f}'.format(self.daq.getDouble('/dev4934/sigouts/0/amplitudes/0')))
+        time.sleep(self.ringdown)
         log.info('Zurich TC set to {:.3f}'.format(self.daq.getDouble('/dev4934/demods/0/timeconstant')))
 
 
@@ -74,7 +75,7 @@ class zurich_pll_noise(Procedure):
         }
         self.emit('results', data)
         self.emit('progress', 
-            (time.time()-self.t_meas_start)/(self.t_meas_end-self.t_meas_start)/100
+            (time.time()-self.t_meas_start)/(self.t_meas_end-self.t_meas_start)*100
         )
     
     def zurich_sample_read(self):
@@ -87,47 +88,6 @@ class zurich_pll_noise(Procedure):
         SENSITIVITIES = [1e-3, 3e-3, 1e-2, 3e-2, 0.1, 0.3, 1, 3]
         
         self.daq.setInt(f'/{self.device_id}/sigins/0/autorange', 1)
-
-    def freq_sampler(self, ):
-        fsample = np.arange(self.fstart, self.fend+self.coarse_res, self.coarse_res)
-        if self.fine_scan:
-            log.info('Fine scan selected')
-            fine_fsample = np.arange(
-                self.fine_f_start, 
-                self.fine_f_final + self.fine_res,
-                self.fine_res
-            )
-            fsample = np.sort(np.append(fsample, fine_fsample))
-    
-        return fsample
-
-    def estimator(self, utcstart, samples, delay, time_constant):
-        _t = delay+time_constant
-        time_length = len(samples)*_t
-        return (time.time()-utcstart)/time_length*100, time_length 
-            
-
-    def autorange(self, lockin: SR830, signal, initial_sensitivity):
-        log.info('beginning autorange')
-        log.info('current sensitivity :' + str(initial_sensitivity))
-        log.info('signal size = '+ str(signal))
-        if signal < 0.8*initial_sensitivity and signal >0.2*initial_sensitivity: 
-            opt_sens = initial_sensitivity
-            log.info('sensitivity unchanged')
-        else:
-            log.info('sensitivity changing...')
-            sens = [s for s in SR830.SENSITIVITIES if 0.8*s > signal]
-            if not sens: #checks if the sens array is empty.  This will happen if signal is a few hundred mV's
-                opt_sens = 1
-            else:
-                opt_sens = sens[0]
-            log.info('optimal sensitivity is ' + str(opt_sens))
-            lockin.sensitivity = opt_sens
-            self.current_sens = lockin.sensitivity
-            time.sleep(0.1)
-            log.info('sensitivity has bee set to :' + str(self.current_sens))
-        return opt_sens
-
 
 
 
@@ -158,10 +118,7 @@ class zurich_graph(ManagedWindow):
         experiment.curve_list
         self.manager.queue(experiment=experiment)
 
-def main():
-    # rm = pyvisa.ResourceManager()
-    # gpib_list = rm.list_resources()
-    # print(pymeasure.__version__)
+if __name__=='__main__':
     
     app = QtWidgets.QApplication(sys.argv)
     window = zurich_graph()
