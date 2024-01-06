@@ -25,17 +25,22 @@ import zhinst.core
 
 class zurich_sr830_fsweep(Procedure):
 
-    drive_amp = FloatParameter('Drive Amplitude (Vpp)', default = 1)
+    # drive_amp = FloatParameter('Drive Amplitude (Vpp)', default = 1)
     f_start = FloatParameter('start frequency (Hz)', default = 500)
     f_final = FloatParameter('stop frequency (Hz)', default = 1200)
     f_step = FloatParameter('Frequency Step (Hz)', default = 1)
     delay = FloatParameter('Delay (s)', default = 1)
 
+    zur_sample_num = IntegerParameter('Zurich demod #', default = 0)
+    drive_osc_num = IntegerParameter('Zurich oscillator #', default = 1)
+
     zur_id = Parameter('Zurich addr.', default = 'dev4934')
     sr830_id = Parameter('SR830 addr.', default = '2::25')
     
     params = [
-        'drive_amp', 'f_start', 'f_final', 'f_step', 'delay',
+        # 'drive_amp', 
+        'f_start', 'f_final', 'f_step', 'delay',
+        'zur_sample_num', 'drive_osc_num', 
         'zur_id', 'sr830_id',
     ]
 
@@ -46,8 +51,8 @@ class zurich_sr830_fsweep(Procedure):
         self.daq = zhinst.core.ziDAQServer('localhost', 8004, 6)
         self.daq.connectDevice(self.zur_id, interface = '1GbE')
         self.daq.set(f"/{self.zur_id}/demods/0/enable", 1)
-        self.demod_path = f"/{self.zur_id}/demods/0/sample"
-
+        self.demod_path = f"/{self.zur_id}/demods/{self.zur_sample_num}/sample"
+        # self.osc_path = f'/{self.zur_id}/osc/{self.drive_osc_num}'
         sr830_full_address = 'GPIB{}::INSTR'.format(self.sr830_id)
         log.info(sr830_full_address)
         self.sr830 = SR830(sr830_full_address)
@@ -55,11 +60,11 @@ class zurich_sr830_fsweep(Procedure):
         self.freq = np.arange(self.f_start, self.f_final+self.f_step, self.f_step,)
         self.t_start = time.time()
 
-        self.zurich_set_freq(self.freq[0])
+        self.zurich_set_freq(self.freq[0], osc = self.drive_osc_num)
         time.sleep(self.delay*5)
     def execute(self):
         for i, f in enumerate(self.freq):
-            self.zurich_set_freq(f)
+            self.zurich_set_freq(f, osc = self.drive_osc_num)
             time.sleep(self.delay)
             utc_time = time.time()
             ts = utc_time - self.t_start
