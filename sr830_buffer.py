@@ -66,3 +66,5 @@ class SR830Interface:
     
     def n_buff(self):
         return float(self.instrument.query('SPTS?'))
+    
+    
