@@ -100,10 +100,8 @@ class tek_dual_sr830_fsweep(Procedure):
                         [x2, sigma_x2], [y2, sigma_y2] = [x2_buff.mean(), x2_buff.std()], [y2_buff.mean(), y2_buff.std()]
                         retry = False
 
-<<<<<<< Updated upstream:fsweep_tek_dual_sr830.py
-                [x1, sigma_x1], [y1, sigma_y1] = meas_1.result()
-                [x2, sigma_x2], [y2, sigma_y2] = meas_2.result()               
-=======
+                # [x1, sigma_x1], [y1, sigma_y1] = meas_1.result()
+                # [x2, sigma_x2], [y2, sigma_y2] = meas_2.result()               
                     except Exception as e:
                         log.error(f'Parallel measurement failed: {e}')
                         log.info(f'Lockin_1 id query is {self.lockin_1.id}')
@@ -111,7 +109,6 @@ class tek_dual_sr830_fsweep(Procedure):
                         log.info('Retrying measurement')
                         time.sleep(0.1)  
 
->>>>>>> Stashed changes:fsweep_tek_dual_sr830buffer.py
 
             # ## parallel measurement
             # log.info('starting parallel measurement')
