@@ -169,7 +169,7 @@ class tek_dual_sr830_graph(ManagedWindow):
             displays = tek_dual_sr830_fsweep.params,
             x_axis= 'f',
             y_axis = 'X_1',
-            directory_input = True
+            # directory_input = True
         )
 
         self.setWindowTitle('tek_dual_sr830_fsweep measurement window')

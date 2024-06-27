@@ -1,7 +1,7 @@
 #
 # This file is part of the PyMeasure package.
 #
-# Copyright (c) 2013-2023 PyMeasure Developers
+# Copyright (c) 2013-2024 PyMeasure Developers
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -26,9 +26,9 @@ import re
 import time
 import numpy as np
 from enum import IntFlag
-from pymeasure.instruments import Instrument, discreteTruncate
+from pymeasure.instruments import Instrument
 from pymeasure.instruments.validators import strict_discrete_set, \
-    truncated_discrete_set, truncated_range
+    truncated_discrete_set, truncated_range, discreteTruncate
 
 
 class LIAStatus(IntFlag):
@@ -58,7 +58,6 @@ class ERRStatus(IntFlag):
 
 
 class SR830(Instrument):
-
     SAMPLE_FREQUENCIES = [
         62.5e-3, 125e-3, 250e-3, 500e-3, 1, 2, 4, 8, 16,
         32, 64, 128, 256, 512
@@ -88,6 +87,27 @@ class SR830(Instrument):
                         "frequency": 9, "ch1": 10, "ch2": 11}
     REFERENCE_SOURCE_TRIGGER = ['SINE', 'POS EDGE', 'NEG EDGE']
     INPUT_FILTER = ['Off', 'On']
+
+    status = Instrument.measurement(
+        "*STB?",
+        """Get the status byte and Master Summary Status bit.""",
+        cast=str,
+    )
+
+    id = Instrument.measurement(
+        "*IDN?",
+        """Get the identification of the instrument.""",
+        cast=str,
+        maxsplit=0,
+    )
+
+    def clear(self):
+        """Clear the instrument status byte."""
+        self.write("*CLS")
+
+    def reset(self):
+        """Reset the instrument."""
+        self.write("*RST")
 
     sine_voltage = Instrument.control(
         "SLVL?", "SLVL%0.3f",
@@ -371,6 +391,7 @@ class SR830(Instrument):
         super().__init__(
             adapter,
             name,
+            includeSCPI=False,
             **kwargs
         )
 
@@ -391,7 +412,7 @@ class SR830(Instrument):
         self.write("AOFF %d" % channel)
 
     def get_scaling(self, channel):
-        """ Returns the offset precent and the exapnsion term
+        """ Returns the offset percent and the expansion term
         that are used to scale the channel in question
         """
         if channel not in self.CHANNELS:
@@ -400,16 +421,21 @@ class SR830(Instrument):
         offset, expand = self.ask("OEXP? %d" % channel).split(',')
         return float(offset), self.EXPANSION_VALUES[int(expand)]
 
-    def set_scaling(self, channel, precent, expand=0):
+    def set_scaling(self, channel, percent=None, expand=0):
         """ Sets the offset of a channel (X=1, Y=2, R=3) to a
-        certain precent (-105% to 105%) of the signal, with
+        certain percent (-105% to 105%) of the signal, with
         an optional expansion term (0, 10=1, 100=2)
         """
         if channel not in self.CHANNELS:
             raise ValueError('SR830 channel is invalid')
+        if percent == None:
+            percent = self.get_scaling(channel)[0]
+        if expand == None:
+            expand = self.get_scaling(channel)[1]
         channel = self.CHANNELS.index(channel) + 1
         expand = discreteTruncate(expand, self.EXPANSION_VALUES)
-        self.write("OEXP %i,%.2f,%i" % (channel, precent, expand))
+        expand = self.EXPANSION_VALUES.index(expand)
+        self.write("OEXP %i,%.2f,%i" % (channel, percent, expand))
 
     def output_conversion(self, channel):
         """ Returns a function that can be used to determine
@@ -417,7 +443,7 @@ class SR830(Instrument):
         """
         offset, expand = self.get_scaling(channel)
         sensitivity = self.sensitivity
-        return lambda x: (x / (10. * expand) + offset) * sensitivity
+        return lambda x: x/expand + offset / 100 * sensitivity
 
     @property
     def sample_frequency(self):
@@ -482,55 +508,74 @@ class SR830(Instrument):
         else:
             return int(query)
 
-    def fill_buffer(self, count, has_aborted=lambda: False, delay=0.001):
+    def fill_buffer(self, count: int, has_aborted=lambda: False, delay=0.001):
+        """ Fill two numpy arrays with the content of the instrument buffer
+
+        Eventually waiting until the specified number of recording is done
+        """
         ch1 = np.empty(count, np.float32)
         ch2 = np.empty(count, np.float32)
         currentCount = self.buffer_count
         index = 0
         while currentCount < count:
             if currentCount > index:
-                ch1[index:currentCount] = self.buffer_data(1, index, currentCount)
-                ch2[index:currentCount] = self.buffer_data(2, index, currentCount)
+                ch1[index:currentCount] = self.get_buffer(1, index, currentCount)
+                ch2[index:currentCount] = self.get_buffer(2, index, currentCount)
                 index = currentCount
                 time.sleep(delay)
             currentCount = self.buffer_count
             if has_aborted():
                 self.pause_buffer()
                 return ch1, ch2
-        self.pauseBuffer()
-        ch1[index : count + 1] = self.buffer_data(1, index, count)  # noqa: E203
-        ch2[index : count + 1] = self.buffer_data(2, index, count)  # noqa: E203
+        self.pause_buffer()
+        ch1[index: count + 1] = self.get_buffer(1, index, count)  # noqa: E203
+        ch2[index: count + 1] = self.get_buffer(2, index, count)  # noqa: E203
         return ch1, ch2
 
-    def buffer_measure(self, count, stopRequest=None, delay=1e-3):
-        self.write("FAST0;STRD")
+    def buffer_measure_old(self, count, stopRequest=None, delay=1e-3):
+        """ Start a fast measurement mode and transfers data from buffer to extract mean
+        and std measurements
+
+        Return the mean and std from both channels
+        """
+        # self.write("FAST2;STRD"); time.sleep(1)
+        # self.write("FAST1;STRD")
+        self.write("FAST0;STRT")
         ch1 = np.empty(count, np.float64)
         ch2 = np.empty(count, np.float64)
         currentCount = self.buffer_count
         index = 0
         while currentCount < count:
             if currentCount > index:
-                ch1[index:currentCount] = self.buffer_data(1, index, currentCount)
-                ch2[index:currentCount] = self.buffer_data(2, index, currentCount)
+                print('the current count is ', currentCount)
+                ch1[index:currentCount] = self.get_buffer(1, index, currentCount)
+                print('the count after ch1 is ', self.buffer_count)
+                ch2[index:currentCount] = self.get_buffer(2, index, currentCount)
+                print('the count after ch2 is ', self.buffer_count)
+
+                # ch1[index:currentCount] = self.get_buffer_frombytes(1, index, currentCount)
+                # ch2[index:currentCount] = self.get_buffer_frombytes(2, index, currentCount)
                 index = currentCount
                 time.sleep(delay)
             currentCount = self.buffer_count
             if stopRequest is not None and stopRequest.isSet():
-                self.pauseBuffer()
+                self.pause_buffer()
                 return (0, 0, 0, 0)
-        self.pauseBuffer()
-        ch1[index:count] = self.buffer_data(1, index, count)
-        ch2[index:count] = self.buffer_data(2, index, count)
-        return (ch1.mean(), ch1.std(), ch2.mean(), ch2.std())
+        self.pause_buffer()
+        ch1[index:count] = self.get_buffer(1, index, count)
+        ch2[index:count] = self.get_buffer(2, index, count)
+        print('measurement done and the current count is ', self.buffer_count)
+        return ch1, ch2
+        # return (ch1.mean(), ch1.std(), ch2.mean(), ch2.std())
 
     def pause_buffer(self):
         self.write("PAUS")
 
-    def start_buffer(self, fast=False):
+    def start_buffer(self, fast=True):
         if fast:
             self.write("FAST2;STRD")
         else:
-            self.write("FAST0;STRD")
+            self.write("FAST0;STRT")
 
     def wait_for_buffer(self, count, has_aborted=lambda: False,
                         timeout=60, timestep=0.01):
@@ -542,18 +587,112 @@ class SR830(Instrument):
             i += 1
             if has_aborted():
                 return False
-        self.pauseBuffer()
+        self.pause_buffer()
 
     def get_buffer(self, channel=1, start=0, end=None):
-        """ Aquires the 32 bit floating point data through binary transfer
+        """ Acquires the 32 bit floating point data through binary transfer
         """
         if end is None:
             end = self.buffer_count
         return self.binary_values("TRCB?%d,%d,%d" % (
             channel, start, end - start))
 
+    def get_buffer_frombytes(self, channel = 1, start=0, end=None):
+        """ Acquires the 32 bit floating point data through bytes transfer
+        """
+        if end is None:
+            end = self.buffer_count
+        
+        self.write("TRCL?%d,%d,%d" % (channel, start, end - start))
+        # self.wait_for()
+        output = self.buffer_bytes_convert(self.read_bytes(-1))
+        return output
+
     def reset_buffer(self):
         self.write("REST")
+
+    def buffer_measure(self, buffer_size, timeout=60, fast=False):
+        '''
+        Buffer measurement method that returns both channel 1 and channel 2 buffers as np.arrays
+
+        Args
+        buffer_size:  Desired minimum buffer length.
+        timeout: Timeout in seconds for the waiting/buffer fill period.
+        This should be configured approriately if sampling rate is low and buffer size is high.
+        fast: Sets the transfer mode.  
+        Fast mode 1 or 2 is not supported yet.
+        See programming section of the SR830 manual for more detail.
+        '''
+        self.reset_buffer()
+        
+        # change the timeout
+        standard_timeout = 3E3
+        sleep_time = np.max([standard_timeout/1e3, buffer_size/self.sample_frequency +0.5]) # add 1 second to accomodate the start of the scan
+        # print('The current timeout is ', standard_timeout)
+        self.adapter.connection.timeout = (sleep_time)*1E3 #timeout is specified in ms
+        # print('new timeout time is ', self.adapter.connection.timeout)
+        t0 = time.time()
+        self.start_buffer(fast) 
+        if fast:
+            try:
+                com_line = self.read_bytes(4*buffer_size)
+                self.pause_buffer(); print('buffer stopped at time ', time.time()-t0)
+                self.adapter.connection.timeout = 0.5e3; self.read_bytes(-1) # this clears the read buffer
+                print('read buffer cleared at time ', time.time()-t0)
+                result = com_line
+                print('measurement complete at ', time.time()-t0)
+                self.adapter.connection.timeout = standard_timeout
+            except Exception as e:
+                print(f'exception ocurred {e}')
+                self.pause_buffer()
+                self.read_bytes(-1) # clear the buffer just in case 
+                self.adapter.connection.timeout = standard_timeout
+                result = np.nan
+        else: 
+            self.wait_for_buffer(buffer_size, timeout=timeout)
+            measured_buffer_count = self.buffer_count
+            ch1_buffer = self.get_buffer_frombytes(channel = 1, start = 0, end = measured_buffer_count)
+            ch2_buffer = self.get_buffer_frombytes(channel = 2, start = 0, end = measured_buffer_count)
+            result = ch1_buffer, ch2_buffer
+        
+        return result
+
+    def read_buffer_bytes(self, count=-1, start=0, end=-1):
+        '''
+        Reads the SR830 buffer as bytes.
+        According to the manual this is the
+        fastest data transfer method over GPIB.
+
+        Args:
+        count: the number of bytest to read.
+        start: starting position of the buffer to read
+        end: ending postition of the buffer.
+        '''
+        if end == -1 or end > 2**14-1:
+            end = self.buffer_count
+        
+        self.write(f'TRCL?1, {start}, {end}')
+        x_bytes = self.read_bytes(count)
+        self.write(f'TRCL?2, {start}, {end}')
+        y_bytes = self.read_bytes(count)
+
+        x_buffer = self.buffer_bytes_convert(x_bytes)
+        y_buffer = self.buffer_bytes_convert(y_bytes)
+        return x_buffer, y_buffer
+
+    def buffer_bytes_convert(self, buffer):
+        '''
+        Converts the SR830's buffer in bytes to decimal numbers.
+        This formula was derived from the programming manual.
+        '''
+        byteproduct = np.array(list(buffer[0::4])) + np.array(list(buffer[1::4]))*2**8
+        divsor, remainder = np.divmod(
+            byteproduct,
+            32768*np.ones(shape=byteproduct.shape)
+        )
+        mantissa = remainder - divsor*2**15
+        exp = np.array(list(buffer[2::4]))
+        return mantissa*np.power(np.ones(shape=exp.shape)*2, exp-124)
 
     def trigger(self):
         self.write("TRIG")
@@ -583,3 +722,31 @@ class SR830(Instrument):
 
         command = "SNAP? " + ",".join(vals_idx)
         return self.values(command)
+
+    def save_setup(self, setup_number: int):
+        """Save the current instrument configuration (all parameters) in a memory
+        referred to by an integer
+
+        :param setup_number: the integer referring to the memory (between 1 and 9 (included))
+        """
+        if 1 <= setup_number <= 9:
+            self.write(f'SSET{setup_number:d};')
+
+    def load_setup(self, setup_number: int):
+        """ Load a previously saved instrument configuration from the memory referred
+        to by an integer
+
+        :param setup_number: the integer referring to the memory (between 1 and 9 (included))
+        """
+        if 1 <= setup_number <= 9:
+            self.write(f'RSET{setup_number:d};')
+
+    def start_scan(self):
+        """ Start the data recording into the buffer
+        """
+        self.write('STRT')
+
+    def pause_scan(self):
+        """ Pause the data recording
+        """
+        self.write('PAUS')
