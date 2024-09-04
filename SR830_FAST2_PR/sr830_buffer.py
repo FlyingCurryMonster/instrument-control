@@ -1,4 +1,4 @@
-import sr830_buffer as sr830_buffer
+import SR830_FAST2_PR.sr830_buffer as sr830_buffer
 import numpy as np
 from pyvisa import ResourceManager
 from pyvisa.resources import MessageBasedResource

@@ -11,7 +11,7 @@ from pymeasure.display.windows import ManagedWindow
 from pymeasure.experiment import Procedure, Results, unique_filename
 from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter
 from ds345 import DS345
-from sr830_buffer import SR830Interface
+from SR830_FAST2_PR.sr830_buffer import SR830Interface
 
 class ds345_sr830_fsweep(Procedure):
 
