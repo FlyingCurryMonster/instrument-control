@@ -2,52 +2,51 @@ import logging
 import sys
 import time
 import numpy as np
-from pymeasure.instruments.srs import SR830
+
 from pymeasure.display.Qt import QtWidgets
 from pymeasure.display.windows import ManagedWindow
 from pymeasure.experiment import Procedure, Results, unique_filename
-from pymeasure.experiment import FloatParameter, Parameter
+from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter
 import zhinst.core
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
 
-class zurich_sr830_fsweep(Procedure):
+class zurich_fsweep(Procedure):
 
-    drive_amp = FloatParameter('Drive Amplitude (Vpp)', default=1)
     f_start = FloatParameter('start frequency (Hz)', default=500)
     f_final = FloatParameter('stop frequency (Hz)', default=1200)
     f_step = FloatParameter('Frequency Step (Hz)', default=1)
     delay = FloatParameter('Delay (s)', default=1)
 
+    osc_num = IntegerParameter('Oscillator number', default=1)
+    demod_num = IntegerParameter('Demodulator number', default=1)
     zur_id = Parameter('Zurich addr.', default='dev4934')
-    sr830_id = Parameter('SR830 addr.', default='2::25')
 
     params = [
-        'drive_amp', 'f_start', 'f_final', 'f_step', 'delay',
-        'zur_id', 'sr830_id',
+        'f_start', 'f_final', 'f_step',
+        'delay',
+        'zur_id', 'osc_num', 'demod_num',
     ]
 
     DATA_COLUMNS = ['UTC', 'timestamp', 'f', 'X_zur', 'Y_zur', 'X_sr', 'Y_sr']
 
     def startup(self):
-        log.info(
-            'Starting frequency sweeper with Zurich drive,'
-            + 'and measuring with Zurich and SR830')
+        log.info('Starting Zurich freq sweeper, with zurich drive and demod')
+
+        self.osc_num -= 1
+        self.demod_num -= 1
+
         self.daq = zhinst.core.ziDAQServer('localhost', 8004, 6)
         self.daq.connectDevice(self.zur_id, interface='1GbE')
-        self.daq.set(f"/{self.zur_id}/demods/0/enable", 1)
-        self.demod_path = f"/{self.zur_id}/demods/0/sample"
-
-        sr830_full_address = 'GPIB{}::INSTR'.format(self.sr830_id)
-        log.info(sr830_full_address)
-        self.sr830 = SR830(sr830_full_address)
+        self.daq.set(f"/{self.zur_id}/demods/{self.demod_num}/enable", 1)
 
         self.freq = np.arange(
             self.f_start,
-            self.f_final+self.f_step,
+            self.f_final + self.f_step,
             self.f_step)
+
         self.t_start = time.time()
 
         self.zurich_set_freq(self.freq[0])
@@ -61,16 +60,12 @@ class zurich_sr830_fsweep(Procedure):
             ts = utc_time - self.t_start
             xzur, yzur, freq_meas = self.zurich_sample_read()
             log.info('Zurich frequency set to ={}'.format(freq_meas))
-            # xsr, ysr = self.sr830.x, self.sr830.y
-            xsr, ysr = self.sr830.xy
             data = {
                 'UTC': utc_time,
                 'timestamp': ts,
                 'f': freq_meas,
-                'X_zur': xzur,
-                'Y_zur': yzur,
-                'X_sr': xsr,
-                'Y_sr': ysr,
+                'X': xzur,
+                'Y': yzur,
             }
 
             self.emit('results', data)
@@ -80,12 +75,14 @@ class zurich_sr830_fsweep(Procedure):
                 break
 
     def zurich_sample_read(self):
-        resp = self.daq.getSample(self.demod_path)
-        _x, _y, _f = resp['x'][0], resp['y'][0], resp['frequency'][0]
-        return _x, _y, _f
+        demod_path = f"/{self.zur_id}/demods/{self.demod_num}/sample"
+        resp = self.daq.getSample(demod_path)
+        x, y, f = resp['x'][0], resp['y'][0], resp['frequency'][0]
+        return x, y, f
 
-    def zurich_set_freq(self, _f, osc=0):
-        self.daq.setDouble('{}/oscs/{}/freq'.format(self.zur_id, osc), _f)
+    def zurich_set_freq(self, f):
+        osc_path = f'{self.zur_id}/oscs/{self.osc_num}/freq'
+        self.daq.setDouble(osc_path, f)
 
 
 class zurich_graph(ManagedWindow):
@@ -93,35 +90,28 @@ class zurich_graph(ManagedWindow):
     def __init__(self):
 
         super().__init__(
-            procedure_class=zurich_sr830_fsweep,
-            inputs=zurich_sr830_fsweep.params,
-            displays=zurich_sr830_fsweep.params,
+            procedure_class=zurich_fsweep,
+            inputs=zurich_fsweep.params,
+            displays=zurich_fsweep.params,
             x_axis='f',
-            y_axis='X_zur',
-            directory_input=True
+            y_axis='X',
         )
 
-        self.setWindowTitle('Zurich-SR830 measurement window')
-        self.directory = r'data-files/zurich-sr830'
+        self.setWindowTitle('Zurich frequency sweeper')
+        self.directory = r'D:/Data/Zurich'
+        self.file_input.filename_fixed = False
 
     def queue(self):
         directory = self.directory
-        filename = unique_filename(directory, prefix='zurich-sr830')
-
+        filename = unique_filename(directory, prefix='zurich-')
         procedure = self.make_procedure()
         results = Results(procedure, filename)
         experiment = self.new_experiment(results)
-        print(experiment)
-        experiment.curve_list
-        self.manager.queue(experiment=experiment)
+        self.manager.queue(experiment)
 
 
 if __name__ == '__main__':
-    # rm = pyvisa.ResourceManager()
-    # gpib_list = rm.list_resources()
-    # print(pymeasure.__version__)
-
-    app = QtWidgets.QApplication(sys.argv)
+    app = QtWidgets.QApplication([])
     window = zurich_graph()
     window.show()
     sys.exit(app.exec_())
