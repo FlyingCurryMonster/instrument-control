@@ -64,8 +64,8 @@ class zurich_fsweep(Procedure):
                 'UTC': utc_time,
                 'timestamp': ts,
                 'f': freq_meas,
-                'X': xzur,
-                'Y': yzur,
+                'x': xzur,
+                'y': yzur,
             }
 
             self.emit('results', data)
