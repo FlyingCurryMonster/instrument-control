@@ -55,8 +55,7 @@ class TekSR830Sweep(Procedure):
         self.t_start = time.time()
 
         self.afg.ch1.frequency = self.freq[0]
-        self.afg.ch1.amp_pp = self.drive_amp
-        time.sleep(self.delay)
+        # time.sleep(self.delay)
 
         time_constant = self.lockin.time_constant
 
@@ -67,7 +66,11 @@ class TekSR830Sweep(Procedure):
             log.info('Delay time is correctly >= 10 x the '
                      'measurement time constant')
 
-        log.info(f'Lock-in TC: {time_constant}')
+        log.info(f'Lock-in TC: {time_constant}s')
+
+        n_pts = (self.f_final - self.f_start) / self.f_step
+        estimate_time = n_pts * self.delay
+        log.info(estimate_time)
 
     def execute(self):
         for i, f in enumerate(self.freq):
