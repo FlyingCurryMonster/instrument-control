@@ -75,11 +75,12 @@ class TekSR830Sweep(Procedure):
     def execute(self):
         for i, f in enumerate(self.freq):
             self.afg.ch1.frequency = f
+            freq_meas = self.afg.ch1.frequency
+            log.info(f'Tek frequency set to = {freq_meas} Hz')
+            log.info(f'Sleeping for {self.delay}')
             time.sleep(self.delay)
             utc_time = time.time()
             ts = utc_time - self.t_start
-            freq_meas = self.afg.ch1.frequency
-            log.info(f'Tek frequency set to = {freq_meas} Hz')
 
             x, y = self.lockin.xy
             drive = self.afg.ch1.amp_vpp
