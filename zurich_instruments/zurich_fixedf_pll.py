@@ -41,7 +41,7 @@ class zurich_measure(Procedure):
         'UTC', 'timestamp',
         'Q_infer', 'f0_infer',
         'X', 'Y',
-        'V_drive', 'f_drive',
+        'V_drive', 'f_drive', 'k',
     ]
 
     def startup(self):
@@ -78,6 +78,7 @@ class zurich_measure(Procedure):
                 'Y': yzur,
                 'V_drive': drive,
                 'f_drive': drive_freq,
+                'k': self.k
             }
             self.emit('results', data)
             time.sleep(1/self.sample_rate)

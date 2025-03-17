@@ -2,15 +2,12 @@ import logging
 import sys
 import time
 import numpy as np
-import concurrent.futures
 from pymeasure.instruments.srs import SR830
 from pymeasure.display.Qt import QtWidgets
 from pymeasure.display.windows import ManagedWindow
 from pymeasure.experiment import Procedure, Results, unique_filename
-from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter
+from pymeasure.experiment import FloatParameter, Parameter
 from pymeasure.instruments.tektronix import AFG3152C
-from SR830_FAST2_PR.sr830_buffer import SR830Interface
-from pyvisa import VisaIOError
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
