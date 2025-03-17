@@ -25,7 +25,7 @@ class TekSR830Sweep(Procedure):
     sr830_id = Parameter('SR830_2 addr.', default='2::9')
 
     params = [
-        'f_start', 'f_final', 'f_step', 'delay'
+        'f_start', 'f_final', 'f_step', 'delay',
         'tek_id', 'sr830_id'
     ]
 
