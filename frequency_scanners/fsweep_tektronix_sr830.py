@@ -72,10 +72,39 @@ class TekSR830Sweep(Procedure):
         estimate_time = n_pts * self.delay
         log.info(estimate_time)
 
+    def tek_signal_query(self, tek_afg: AFG3152C, phase_units='rad'):
+        # need to include assertion error for phase_units
+        assert phase_units in ['rad', 'deg']
+
+        state = True
+        while state:
+            try: 
+                amp = tek_afg.ch1.amp_vpp
+                freq = tek_afg.ch1.frequency
+                if phase_units == 'rad':
+                    phase = tek_afg.ch1.phase_rad
+                else:
+                    phase = tek_afg.ch1.phase_deg
+
+                assert isinstance(amp, float), f"Amplitude type: {type(amp)}"
+                assert isinstance(phase, float), f"Phase type: {type(phase)}"
+
+                state = False
+
+            except AssertionError as ae:
+                log.warning(f"Assertion failed: {ae}. Retrying...")
+                time.sleep(0.1)
+
+            except Exception as e:
+                log.warning(e)
+                time.sleep(0.1)
+        return amp, freq, phase
+
     def execute(self):
         for i, f in enumerate(self.freq):
             self.afg.ch1.frequency = f
             freq_meas = self.afg.ch1.frequency
+            drive, freq_meas = self.tek_signal_query(self.afg, 'deg')
             log.info(f'Tek frequency set to = {freq_meas} Hz')
             log.info(f'Sleeping for {self.delay}')
             time.sleep(self.delay)
@@ -83,7 +112,7 @@ class TekSR830Sweep(Procedure):
             ts = utc_time - self.t_start
 
             x, y = self.lockin.xy
-            drive = self.afg.ch1.amp_vpp
+            # drive = self.afg.ch1.amp_vpp
             data = {
                 'UTC': utc_time,
                 'timestamp': ts,
