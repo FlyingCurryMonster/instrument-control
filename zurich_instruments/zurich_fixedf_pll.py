@@ -22,6 +22,21 @@ def calculate_f0_infer(X, Y, f_drive, k):
     return f_drive * (1 + Y / (X * 2 * Q))
 
 
+def fdrive_calculator(phi, Q, f0):
+    '''
+    for a f0 and Q, compute the fdrive needed to produce a response
+    with phase phi.
+
+    Use the result:
+
+    Y/X = Q* (f0^2 - fd^2)/(f_d*f0)
+
+    to derive the expression
+    '''
+    adjust_factor = (phi / Q + np.sqrt(phi**2 / Q**2 + 4)) / 2
+    return f0 / adjust_factor
+
+
 class FixedSizeBuffer:
     def __init__(self, size):
         self.size = size
@@ -35,7 +50,7 @@ class FixedSizeBuffer:
 
         # Wrap around when the buffer is full
         self.index = (self.index + 1) % self.size
-  
+
         if self.index == 0:
             self.full = True
 
@@ -43,16 +58,18 @@ class FixedSizeBuffer:
         """Return the current buffer as a NumPy array."""
         if self.full:
             return self.buffer
-        # Only return valid data if buffer isn't full        
+        # Only return valid data if buffer isn't full  
         return self.buffer[:self.index]
 
 
 class zurich_measure(Procedure):
-    k = FloatParameter('k constant', units='1/V', default=205.425e6)
-    
-    f0_infer_limit = FloatParameter(
-        'Frequency deviation limit',
-        units='Hz', default=1e-3)
+    k = FloatParameter('k constant', units='1/V', default=206.0434e6)
+    xbkg = FloatParameter('X background', units='V', default=1.633e-6)
+    ybkg = FloatParameter('Y bakcground', units='V', default=-4.21e-6)
+
+    phase_limit = FloatParameter(
+        'Phase limit',
+        units='deg', default=2)
 
     ringdown_time = FloatParameter(
         'Mininmum time to wait to rebalance',
@@ -67,7 +84,7 @@ class zurich_measure(Procedure):
     comments = Parameter('Comments/Notes')
 
     params = [
-        'k', 'f0_infer_limit', 'ringdown_time',
+        'k', 'phase_limit', 'ringdown_time',
         'sample_rate', 'buffer_size',
         'zur_id', 'osc_num', 'demod_num',
         'comments',
@@ -95,7 +112,7 @@ class zurich_measure(Procedure):
         self.daq.set(f"/{self.zur_id}/demods/{self.demod_num}/enable", 1)
 
         self.adjust_times = FixedSizeBuffer(size=self.buffer_size)
-        self.f0_buffer = FixedSizeBuffer(size=self.buffer_size)
+        self.phase_dev_buffer = FixedSizeBuffer(size=self.buffer_size)
         self.tau_buffer = FixedSizeBuffer(size=self.buffer_size)
 
         self.adjust_times.append(0)
@@ -113,15 +130,17 @@ class zurich_measure(Procedure):
             utc_time = time.time()
             ts = utc_time - self.t_start
             xzur, yzur, drive_freq = self.zurich_sample_read()
+            X, Y = xzur - self.xbkg, yzur - self.ybkg
             drive = self.zurich_get_amp(osc_num=self.osc_num)
 
-            Q_infer = calculate_Q_infer(xzur, yzur, self.k)
-            f0_infer = calculate_f0_infer(xzur, yzur, drive_freq, self.k)
+            Q_infer = calculate_Q_infer(X, Y, self.k)
+            f0_infer = calculate_f0_infer(X, Y, drive_freq, self.k)
 
-            f0_deviation = f0_infer - drive_freq
-            self.f0_buffer.append(f0_deviation)
-            f0_tape = self.f0_buffer.get_buffer()            
-            f0_out_of_range = np.median(np.abs(f0_tape) > self.f0_infer_limit)
+            phase_deivation = np.rad2deg(np.arctan(Y/X))
+            self.phase_dev_buffer.append(phase_deivation)
+            phase_tape = self.phase_dev_buffer.get_buffer()
+            phase_out_of_range = np.median(
+                np.abs(phase_tape) > self.phase_limit)
 
             tau = self.tau_buffer.get_buffer()[-1]
             last_rebalance_time = self.adjust_times.get_buffer()[-1]
@@ -129,15 +148,15 @@ class zurich_measure(Procedure):
             ringdown = max(3 * tau, self.ringdown_time)
             delay_sufficient = utc_time - last_rebalance_time > ringdown
 
-            drive_reset_switch = f0_out_of_range and delay_sufficient
+            drive_reset_switch = phase_out_of_range and delay_sufficient
 
             data = {
                 'UTC': utc_time,
                 'timestamp': ts,
                 'Q_infer': Q_infer,
                 'f0_infer': f0_infer,
-                'X': xzur,
-                'Y': yzur,
+                'X': X,
+                'Y': Y,
                 'V_drive': drive,
                 'f_drive': drive_freq,
                 'k': self.k,
@@ -148,28 +167,35 @@ class zurich_measure(Procedure):
             self.emit('results', data)
 
             if drive_reset_switch:
-                median_f0infer_deviation = np.median(f0_tape)
-                if median_f0infer_deviation > 0:
-                    # set the new frequency to be a little 
-                    # not sure ask JMP if i should do that
-                    new_freq = f0_infer - 1 * self.f0_infer_limit / 5
+                median_phase_deviation = np.median(phase_tape)
+
+                if median_phase_deviation > 0:
+                    target_phi = -0.8 * self.phase_limit
+                    new_freq = fdrive_calculator(
+                        target_phi, Q_infer, f0_infer)
                     self.zurich_set_freq(self.osc_num, new_freq)
+
                     self.adjust_times.append(utc_time)
                     self.tau_buffer.append(tau)
-                    log.info(f'f0 infer is {median_f0infer_deviation}'
-                             'Hz ABOVE the drive')
-                    log.info(f'DRIVE RESET TO {new_freq}')
+
+                    log.info(f'phase is HIGH, {median_phase_deviation} deg')
+                    log.warning(f'DRIVE RESET TO {new_freq}')
+                    log.info(f'Ringdown is 3.5*{ringdown}s')
                     # log.info('RESETING THE DRIVE FREQ')
 
-                elif median_f0infer_deviation < 0:
+                elif median_phase_deviation < 0:
                     # set the frequency to be a little higher
-                    new_freq = f0_infer + 1 * self.f0_infer_limit / 5
+                    target_phi = 0.8 * self.phase_limit
+                    new_freq = fdrive_calculator(
+                        target_phi, Q_infer, f0_infer)
                     self.zurich_set_freq(self.osc_num, new_freq)
+
                     self.adjust_times.append(utc_time)
                     self.tau_buffer.append(tau)
-                    log.info(f'f0 infer is {median_f0infer_deviation}Hz'
-                             'BELOW the drive')
-                    log.info(f'DRIVE RESET TO {new_freq}')
+
+                    log.info(f'phase is LOW, {median_phase_deviation} deg')
+                    log.warning(f'DRIVE RESET TO {new_freq}')
+                    log.info(f'Ringdown is 3.5*{ringdown}s')
 
             time.sleep(1/self.sample_rate)
 
