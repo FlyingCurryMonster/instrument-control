@@ -18,15 +18,16 @@ class TekSR830Sweep(Procedure):
     # drive_amp = FloatParameter('Drive Amplitude (Vpp)', default=1)
     f_start = FloatParameter('Start Frequency (Hz)', default=1324.410)
     f_final = FloatParameter('Stop Frequency (Hz)', default=1324.430)
-    f_step = FloatParameter('Frequency Step (Hz)', default=1e-3)
+    f_step = FloatParameter('Frequency Step (Hz)', default=2.5e-4)
     delay = FloatParameter('Delay (s)', default=330)
-    # buffer_time = FloatParameter('Buffer measure time (s)', default=10)
+    
     tek_id = Parameter('Tek AFG addr', default='1::11')
     sr830_id = Parameter('SR830_2 addr.', default='2::9')
+    comments = Parameter('Comments')
 
     params = [
         'f_start', 'f_final', 'f_step', 'delay',
-        'tek_id', 'sr830_id'
+        'tek_id', 'sr830_id', 'comments'
     ]
 
     DATA_COLUMNS = [
@@ -34,6 +35,8 @@ class TekSR830Sweep(Procedure):
         'f',
         'X',
         'Y',
+        'R',
+        'phase',
         'V_drive'
     ]
 
@@ -68,9 +71,10 @@ class TekSR830Sweep(Procedure):
 
         log.info(f'Lock-in TC: {time_constant}s')
 
-        n_pts = (self.f_final - self.f_start) / self.f_step
+        n_pts = int((self.f_final - self.f_start) / self.f_step)
         estimate_time = n_pts * self.delay
-        log.info(estimate_time)
+        log.info(f'Taking {n_pts} data points')
+        log.info(f'Estimated measurement time is {estimate_time/60} minutes')
 
     def tek_signal_query(self, tek_afg: AFG3152C, phase_units='rad'):
         # need to include assertion error for phase_units
@@ -78,7 +82,7 @@ class TekSR830Sweep(Procedure):
 
         state = True
         while state:
-            try: 
+            try:
                 amp = tek_afg.ch1.amp_vpp
                 freq = tek_afg.ch1.frequency
                 if phase_units == 'rad':
@@ -103,22 +107,26 @@ class TekSR830Sweep(Procedure):
     def execute(self):
         for i, f in enumerate(self.freq):
             self.afg.ch1.frequency = f
-            freq_meas = self.afg.ch1.frequency
-            drive, freq_meas = self.tek_signal_query(self.afg, 'deg')
+
+            drive, freq_meas, _ = self.tek_signal_query(self.afg, 'deg')
+
             log.info(f'Tek frequency set to = {freq_meas} Hz')
             log.info(f'Sleeping for {self.delay}')
             time.sleep(self.delay)
+
             utc_time = time.time()
             ts = utc_time - self.t_start
 
             x, y = self.lockin.xy
-            # drive = self.afg.ch1.amp_vpp
+
             data = {
                 'UTC': utc_time,
                 'timestamp': ts,
                 'f': freq_meas,
                 'X': x,
                 'Y': y,
+                'R': np.sqrt(x**2 + y**2),
+                'phase': np.rad2deg(np.arctan(y/x)),
                 'V_drive': drive
             }
 
@@ -140,13 +148,13 @@ class TekSR830Graph(ManagedWindow):
             y_axis='X',
         )
 
-        self.setWindowTitle('TekDualSR830FSweep Measurement Window')
+        self.setWindowTitle('Tek and SR830 fsweep Measurement Window')
         self.directory = r'D:/Data/RNB-Spring2025/Tektronix and SR830 sweep'
         self.file_input.filename_fixed = False
 
     def queue(self):
         directory = self.directory
-        filename = unique_filename(directory, prefix='tek_dual_sr830')
+        filename = unique_filename(directory, prefix='tek_sr830')
         procedure = self.make_procedure()
         results = Results(procedure, filename)
         experiment = self.new_experiment(results)        
