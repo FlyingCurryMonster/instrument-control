@@ -4,13 +4,18 @@ import time
 import numpy as np
 from pymeasure.display.Qt import QtWidgets
 from pymeasure.display.windows import ManagedWindow
+from pymeasure.display.widgets import PlotWidget
 from pymeasure.experiment import Procedure, Results, unique_filename
 from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter
+from pyqtgraph import DateAxisItem
 import zhinst.core
 
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
+
+LabView_t0 = 2082844800
+timezone = 4 * 60 * 60
 
 
 def calculate_Q_infer(X, Y, k):
@@ -22,7 +27,7 @@ def calculate_f0_infer(X, Y, f_drive, k):
     return f_drive * (1 + Y / (X * 2 * Q))
 
 
-def fdrive_calculator(phi, Q, f0):
+def fdrive_calculator(phi_degrees, Q, f0):
     '''
     for a f0 and Q, compute the fdrive needed to produce a response
     with phase phi.
@@ -33,6 +38,7 @@ def fdrive_calculator(phi, Q, f0):
 
     to derive the expression
     '''
+    phi = np.deg2rad(phi_degrees)
     adjust_factor = (phi / Q + np.sqrt(phi**2 / Q**2 + 4)) / 2
     return f0 / adjust_factor
 
@@ -58,14 +64,28 @@ class FixedSizeBuffer:
         """Return the current buffer as a NumPy array."""
         if self.full:
             return self.buffer
-        # Only return valid data if buffer isn't full  
+        # Only return valid data if buffer isn't full
         return self.buffer[:self.index]
+
+    def clear_buffer(self):
+        """Clear the buffer by resetting the index and full flag."""
+        self.index = 0
+        self.full = False
+        # Optionally, reinitialize the buffer if needed:
+        self.buffer = np.zeros(self.size, dtype=float)
+
+    def zero_the_buffer(self):
+        """Set all elements in the buffer to zero
+        and reset the index and full flag."""
+        self.buffer[:] = 0  # Set every element of the preallocated array to 0
+        self.index = 0      # Reset the index back to 0
+        self.full = False   # Mark the buffer as not full
 
 
 class zurich_measure(Procedure):
-    k = FloatParameter('k constant', units='1/V', default=206.0434e6)
-    xbkg = FloatParameter('X background', units='V', default=1.633e-6)
-    ybkg = FloatParameter('Y bakcground', units='V', default=-4.21e-6)
+    k = FloatParameter('k constant', units='1/V', default=9.61315e6)
+    xbkg = FloatParameter('X background', units='V', default=10*2*1.633e-6)
+    ybkg = FloatParameter('Y bakcground', units='V', default=10*2*-4.21e-6)
 
     phase_limit = FloatParameter(
         'Phase limit',
@@ -74,6 +94,10 @@ class zurich_measure(Procedure):
     ringdown_time = FloatParameter(
         'Mininmum time to wait to rebalance',
         units='s', default=60)
+
+    num_tau = FloatParameter(
+        "Number of resonator tau's to wait before rebalance",
+        default=5)
 
     sample_rate = FloatParameter('Sample rate', units='Hz', default=1)
     buffer_size = IntegerParameter('Re-balance buffer count', default=30)
@@ -85,6 +109,7 @@ class zurich_measure(Procedure):
 
     params = [
         'k', 'phase_limit', 'ringdown_time',
+        'num_tau',
         'sample_rate', 'buffer_size',
         'zur_id', 'osc_num', 'demod_num',
         'comments',
@@ -112,7 +137,7 @@ class zurich_measure(Procedure):
         self.daq.set(f"/{self.zur_id}/demods/{self.demod_num}/enable", 1)
 
         self.adjust_times = FixedSizeBuffer(size=self.buffer_size)
-        self.phase_dev_buffer = FixedSizeBuffer(size=self.buffer_size)
+        self.phase_buffer = FixedSizeBuffer(size=self.buffer_size)
         self.tau_buffer = FixedSizeBuffer(size=self.buffer_size)
 
         self.adjust_times.append(0)
@@ -127,7 +152,7 @@ class zurich_measure(Procedure):
 
     def execute(self):
         while not self.should_stop():
-            utc_time = time.time()
+            utc_time = time.time() + LabView_t0
             ts = utc_time - self.t_start
             xzur, yzur, drive_freq = self.zurich_sample_read()
             X, Y = xzur - self.xbkg, yzur - self.ybkg
@@ -136,19 +161,22 @@ class zurich_measure(Procedure):
             Q_infer = calculate_Q_infer(X, Y, self.k)
             f0_infer = calculate_f0_infer(X, Y, drive_freq, self.k)
 
-            phase_deivation = np.rad2deg(np.arctan(Y/X))
-            self.phase_dev_buffer.append(phase_deivation)
-            phase_tape = self.phase_dev_buffer.get_buffer()
-            phase_out_of_range = np.median(
-                np.abs(phase_tape) > self.phase_limit)
-
             tau = self.tau_buffer.get_buffer()[-1]
             last_rebalance_time = self.adjust_times.get_buffer()[-1]
-
-            ringdown = max(3 * tau, self.ringdown_time)
+            ringdown = max(self.num_tau * tau, self.ringdown_time)
             delay_sufficient = utc_time - last_rebalance_time > ringdown
 
-            drive_reset_switch = phase_out_of_range and delay_sufficient
+            if delay_sufficient:
+                phase = np.rad2deg(np.arctan(Y/X))
+
+                self.phase_buffer.append(phase)
+                phase_tape = self.phase_buffer.get_buffer()
+                phase_out_of_range = np.all(
+                    np.abs(phase_tape) > self.phase_limit)
+
+                drive_reset_switch = phase_out_of_range and delay_sufficient
+            else:
+                drive_reset_switch = False
 
             data = {
                 'UTC': utc_time,
@@ -168,19 +196,23 @@ class zurich_measure(Procedure):
 
             if drive_reset_switch:
                 median_phase_deviation = np.median(phase_tape)
-
+                new_tau = Q_infer / (np.pi * f0_infer)
                 if median_phase_deviation > 0:
                     target_phi = -0.8 * self.phase_limit
                     new_freq = fdrive_calculator(
                         target_phi, Q_infer, f0_infer)
+
                     self.zurich_set_freq(self.osc_num, new_freq)
 
                     self.adjust_times.append(utc_time)
-                    self.tau_buffer.append(tau)
+                    self.tau_buffer.append(new_tau)
+                    self.phase_buffer.zero_the_buffer()
 
                     log.info(f'phase is HIGH, {median_phase_deviation} deg')
                     log.warning(f'DRIVE RESET TO {new_freq}')
-                    log.info(f'Ringdown is 3.5*{ringdown}s')
+                    log.info(
+                        'Ringdown is {:}*{:.7g} s'.format(
+                            self.num_tau, new_tau))
                     # log.info('RESETING THE DRIVE FREQ')
 
                 elif median_phase_deviation < 0:
@@ -191,11 +223,13 @@ class zurich_measure(Procedure):
                     self.zurich_set_freq(self.osc_num, new_freq)
 
                     self.adjust_times.append(utc_time)
-                    self.tau_buffer.append(tau)
+                    self.tau_buffer.append(new_tau)
+                    self.phase_buffer.zero_the_buffer()
 
                     log.info(f'phase is LOW, {median_phase_deviation} deg')
                     log.warning(f'DRIVE RESET TO {new_freq}')
-                    log.info(f'Ringdown is 3.5*{ringdown}s')
+                    log.info('Ringdown is {:} * {:.3g} s'.format(
+                        self.num_tau, new_tau))
 
             time.sleep(1/self.sample_rate)
 
@@ -218,12 +252,24 @@ class zurich_measure(Procedure):
 
 class zurich_graph(ManagedWindow):
     def __init__(self):
+
+        time_axis_plot = PlotWidget(
+            name='Datetime Plot',
+            columns=zurich_measure.DATA_COLUMNS,
+            x_axis='UTC',
+            y_axis='f0_infer')
+
+        # need to add offset for EST time
+        time_axis_plot.plot.setAxisItems(
+            {'bottom': DateAxisItem(utcOffset=LabView_t0 + timezone)})
         super().__init__(
             procedure_class=zurich_measure,
             inputs=zurich_measure.params,
             displays=zurich_measure.params,
-            x_axis='timestamp',
-            y_axis='f0_infer',
+            x_axis='X',
+            y_axis='Y',
+            widget_list=(time_axis_plot,)
+
         )
         self.setWindowTitle('Zurich fixed freq PLL')
         self.directory = r'D:/Data/RNB-Spring2025/Zurich fixed freq PLL data'

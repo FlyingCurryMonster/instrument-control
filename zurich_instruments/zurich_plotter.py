@@ -1,6 +1,7 @@
 import logging
 import sys
 import time
+import numpy as np
 from pymeasure.display.Qt import QtWidgets
 from pymeasure.display.windows import ManagedWindow
 from pymeasure.experiment import Procedure, Results, unique_filename
@@ -28,7 +29,7 @@ class zurich_measure(Procedure):
     # Updated data columns for continuous measurement
     DATA_COLUMNS = [
         'UTC', 'timestamp',
-        'X', 'Y',
+        'X', 'Y', 'R', 'phase',
         'V_drive', 'f_drive',
         ]
 
@@ -59,6 +60,8 @@ class zurich_measure(Procedure):
                 'timestamp': ts,
                 'X': xzur,
                 'Y': yzur,
+                'R': np.sqrt(xzur**2 + yzur**2),
+                'phase': np.rad2deg(np.arctan(yzur/xzur)), 
                 'V_drive': drive,
                 'f_drive': freq_meas,
             }
@@ -90,7 +93,7 @@ class zurich_graph(ManagedWindow):
             inputs=zurich_measure.params,
             displays=zurich_measure.params,
             x_axis='timestamp',
-            y_axis='y',
+            y_axis='Y',
         )
         self.setWindowTitle('Zurich continuous plotter')
         self.directory = r'D:/Data/RNB-Spring2025/Python Zurich Plotter Data'

@@ -20,7 +20,7 @@ class TekSR830Sweep(Procedure):
     f_final = FloatParameter('Stop Frequency (Hz)', default=1324.430)
     f_step = FloatParameter('Frequency Step (Hz)', default=2.5e-4)
     delay = FloatParameter('Delay (s)', default=330)
-    
+
     tek_id = Parameter('Tek AFG addr', default='1::11')
     sr830_id = Parameter('SR830_2 addr.', default='2::9')
     comments = Parameter('Comments')
@@ -157,7 +157,7 @@ class TekSR830Graph(ManagedWindow):
         filename = unique_filename(directory, prefix='tek_sr830')
         procedure = self.make_procedure()
         results = Results(procedure, filename)
-        experiment = self.new_experiment(results)        
+        experiment = self.new_experiment(results)
         self.manager.queue(experiment=experiment)
 
 
