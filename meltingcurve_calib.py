@@ -57,7 +57,7 @@ class MCT_calib(Procedure):
     # Updated data columns for continuous measurement
     DATA_COLUMNS = [
         'UTC', 'timestamp',
-        'C', 'Loss', 'Vex'
+        'C', 'Loss', 'Vex',
         'Period', 'P_paro',
     ]
 
@@ -79,6 +79,7 @@ class MCT_calib(Procedure):
         log.info(f'AH2500 average exponent is set to {queried_avgexp}')
         log.info(f'AH2500A approx meas. time is {ah_approx_meas_time}s')
         log.info(f'HP counter gate time is {queried_gate_time}')
+        self.t_start = time.time()
 
     def execute(self):
         while not self.should_stop():
