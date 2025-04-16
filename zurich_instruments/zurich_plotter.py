@@ -61,7 +61,7 @@ class zurich_measure(Procedure):
                 'X': xzur,
                 'Y': yzur,
                 'R': np.sqrt(xzur**2 + yzur**2),
-                'phase': np.rad2deg(np.arctan(yzur/xzur)), 
+                'phase': np.rad2deg(np.arctan(yzur/xzur)),
                 'V_drive': drive,
                 'f_drive': freq_meas,
             }

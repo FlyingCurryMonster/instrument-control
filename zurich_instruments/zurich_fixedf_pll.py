@@ -3,8 +3,9 @@ import sys
 import time
 import numpy as np
 from pymeasure.display.Qt import QtWidgets
-from pymeasure.display.windows import ManagedWindow
-from pymeasure.display.widgets import PlotWidget
+# from pymeasure.display.windows import ManagedWindow
+from pymeasure.display.windows.managed_dock_window import ManagedDockWindow
+from pymeasure.display.widgets import PlotWidget  # MyPlotWidget
 from pymeasure.experiment import Procedure, Results, unique_filename
 from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter
 from pyqtgraph import DateAxisItem
@@ -85,7 +86,7 @@ class FixedSizeBuffer:
 class zurich_measure(Procedure):
     k = FloatParameter('k constant', units='1/V', default=9.61315e6)
     xbkg = FloatParameter('X background', units='V', default=10*2*1.633e-6)
-    ybkg = FloatParameter('Y bakcground', units='V', default=10*2*-4.21e-6)
+    ybkg = FloatParameter('Y background', units='V', default=10*2*-4.21e-6)
 
     phase_limit = FloatParameter(
         'Phase limit',
@@ -99,8 +100,8 @@ class zurich_measure(Procedure):
         "Number of resonator tau's to wait before rebalance",
         default=5)
 
-    sample_rate = FloatParameter('Sample rate', units='Hz', default=1)
-    buffer_size = IntegerParameter('Re-balance buffer count', default=30)
+    sample_rate = FloatParameter('Sample rate', units='Hz', default=0.33)
+    buffer_size = IntegerParameter('Re-balance buffer count', default=300)
 
     zur_id = Parameter('Zurich addr.', default='dev4934')
     osc_num = IntegerParameter('Oscillator number', default=2)
@@ -108,8 +109,9 @@ class zurich_measure(Procedure):
     comments = Parameter('Comments/Notes')
 
     params = [
-        'k', 'phase_limit', 'ringdown_time',
-        'num_tau',
+        'k', 'phase_limit',
+        'xbkg', 'ybkg',
+        'num_tau', 'ringdown_time',
         'sample_rate', 'buffer_size',
         'zur_id', 'osc_num', 'demod_num',
         'comments',
@@ -171,7 +173,7 @@ class zurich_measure(Procedure):
 
                 self.phase_buffer.append(phase)
                 phase_tape = self.phase_buffer.get_buffer()
-                phase_out_of_range = np.all(
+                phase_out_of_range = np.median(
                     np.abs(phase_tape) > self.phase_limit)
 
                 drive_reset_switch = phase_out_of_range and delay_sufficient
@@ -198,7 +200,7 @@ class zurich_measure(Procedure):
                 median_phase_deviation = np.median(phase_tape)
                 new_tau = Q_infer / (np.pi * f0_infer)
                 if median_phase_deviation > 0:
-                    target_phi = -0.8 * self.phase_limit
+                    target_phi = -0.5 * self.phase_limit
                     new_freq = fdrive_calculator(
                         target_phi, Q_infer, f0_infer)
 
@@ -208,8 +210,9 @@ class zurich_measure(Procedure):
                     self.tau_buffer.append(new_tau)
                     self.phase_buffer.zero_the_buffer()
 
+                    change = new_freq - drive_freq
                     log.info(f'phase is HIGH, {median_phase_deviation} deg')
-                    log.warning(f'DRIVE RESET TO {new_freq}')
+                    log.warning(f'DRIVE changed by {change}Hz')
                     log.info(
                         'Ringdown is {:}*{:.7g} s'.format(
                             self.num_tau, new_tau))
@@ -217,7 +220,7 @@ class zurich_measure(Procedure):
 
                 elif median_phase_deviation < 0:
                     # set the frequency to be a little higher
-                    target_phi = 0.8 * self.phase_limit
+                    target_phi = 0.5 * self.phase_limit
                     new_freq = fdrive_calculator(
                         target_phi, Q_infer, f0_infer)
                     self.zurich_set_freq(self.osc_num, new_freq)
@@ -226,8 +229,9 @@ class zurich_measure(Procedure):
                     self.tau_buffer.append(new_tau)
                     self.phase_buffer.zero_the_buffer()
 
+                    change = new_freq - drive_freq
                     log.info(f'phase is LOW, {median_phase_deviation} deg')
-                    log.warning(f'DRIVE RESET TO {new_freq}')
+                    log.warning(f'DRIVE adjusted by {change}Hz')
                     log.info('Ringdown is {:} * {:.3g} s'.format(
                         self.num_tau, new_tau))
 
@@ -250,7 +254,8 @@ class zurich_measure(Procedure):
         self.daq.setDouble(osc_path, f)
 
 
-class zurich_graph(ManagedWindow):
+# class zurich_graph(ManagedWindow):
+class zurich_graph(ManagedDockWindow):
     def __init__(self):
 
         time_axis_plot = PlotWidget(
@@ -262,15 +267,30 @@ class zurich_graph(ManagedWindow):
         # need to add offset for EST time
         time_axis_plot.plot.setAxisItems(
             {'bottom': DateAxisItem(utcOffset=LabView_t0 + timezone)})
+
+        nyquist_plot = PlotWidget(
+            name='Nyquist',
+            columns=zurich_measure.DATA_COLUMNS,
+            x_axis='X',
+            y_axis='Y',
+            # npts=zurich_measure.buffer_size,
+        )
+        nyquist_plot.plot.getViewBox().setAspectLocked(True, ratio=1.0)
+
         super().__init__(
             procedure_class=zurich_measure,
             inputs=zurich_measure.params,
             displays=zurich_measure.params,
-            x_axis='X',
-            y_axis='Y',
-            widget_list=(time_axis_plot,)
+            x_axis=['UTC'],
+            y_axis=['X', 'Y', 'f_drive'],
+            widget_list=(time_axis_plot, nyquist_plot,)
 
         )
+
+        for plot_frame in self.dock_widget.plot_frames:
+            plot_frame.plot.setAxisItems(
+                {'bottom': DateAxisItem(utcOffset=LabView_t0 + timezone)})
+
         self.setWindowTitle('Zurich fixed freq PLL')
         self.directory = r'D:/Data/RNB-Spring2025/Zurich fixed freq PLL data'
         self.file_input.filename_fixed = False
