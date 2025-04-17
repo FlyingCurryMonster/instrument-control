@@ -43,7 +43,9 @@ class MCT_calib(Procedure):
                         default=24.9142702639e-6, units='s')
 
     hp_gatetime = FloatParameter('counter gate time', units='s', default=4)
-    ah_avgexp = IntegerParameter('AH2500 avg. exponent', default=7)
+    ah_avgexp = IntegerParameter('AH2500 avg. exponent', default=7,
+                                 minimum=0,
+                                 maximum=15)
 
     ah_address = Parameter('AH2500A address', default='GPIB1::3::INSTR')
     hp_address = Parameter('HP counter address', default='GPIB0::9::INSTR')
