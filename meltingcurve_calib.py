@@ -4,7 +4,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pymeasure.instruments.andeenhagerling import AH2500A
 from pymeasure.instruments.hp import HP53132A
-from pymeasure.display.Qt import QtWidgets
+from pymeasure.display.curves import ResultsCurve
+import pyqtgraph as pg
+import types
+from pymeasure.display.Qt import QtWidgets, QtCore
 from pymeasure.display.windows.managed_dock_window import ManagedDockWindow
 from pymeasure.display.widgets import PlotWidget  # MyPlotWidget
 from pymeasure.experiment import Procedure, Results, unique_filename
@@ -100,7 +103,7 @@ class MCT_calib(Procedure):
                     try:
                         results[label] = fut.result()
                     except Exception as e:
-                        results[label] = f"Error: {e}"
+                        log.error(f"Error: {e}")
 
             cap, loss, Vex = results['AH']
             period = results['HP']
@@ -134,11 +137,43 @@ class MCT_calib_graph(ManagedDockWindow):
             {'bottom': DateAxisItem(utcOffset=LabView_t0 + timezone)})
 
         xy_plot = PlotWidget(
-            name='Nyquist',
+            name='XY Plot',
             columns=MCT_calib.DATA_COLUMNS,
             x_axis='C',
             y_axis='P_paro',
         )
+
+        # Make this XY plot display points only (no connecting line).
+        # Override new_curve on this instance so created ResultsCurve objects
+        # have a pen (so ResultsCurve can query color()) but the pen is set
+        # to NoPen so no line is drawn; markers are used for points.
+        def _xy_new_curve(self, results, color=pg.intColor(0), **kwargs):
+            # Provide a QPen object so ResultsCurve can query its color(),
+            # but disable line drawing by setting the pen style to NoPen.
+            pen = pg.mkPen(color=color)
+            try:
+                pen.setStyle(QtCore.Qt.NoPen)
+            except Exception:
+                # Some pen implementations may not support setStyle; ignore
+                pass
+            kwargs.setdefault('pen', pen)
+            kwargs.setdefault('antialias', False)
+            curve = ResultsCurve(results,
+                                 wdg=self,
+                                 x=self.plot_frame.x_axis,
+                                 y=self.plot_frame.y_axis,
+                                 **kwargs)
+            # set marker style for the points
+            try:
+                curve.setSymbol('o')
+                curve.setSymbolSize(7)
+                curve.setSymbolBrush((0, 150, 255, 200))
+                curve.setSymbolPen((0, 0, 0, 200))
+            except Exception:
+                pass
+            return curve
+
+        xy_plot.new_curve = types.MethodType(_xy_new_curve, xy_plot)
 
         super().__init__(
             procedure_class=MCT_calib,
@@ -154,8 +189,18 @@ class MCT_calib_graph(ManagedDockWindow):
             plot_frame.plot.setAxisItems(
                 {'bottom': DateAxisItem(utcOffset=LabView_t0 + timezone)})
 
+        try:
+            for item in xy_plot.plot.listDataItems():
+                item.setPen(None)
+                item.setSymbol('o')
+                item.setSymbolSize(6)
+                item.setSymbolBrush((255, 255, 255, 200))  # fill RGBA
+                item.setSymbolPen((0, 0, 0, 200))  # edge RGBA
+        except Exception as e:
+            log.debug(f"Could not set symbol for xy_plot: {e}")
+
         self.setWindowTitle('Melting curve calibration')
-        self.directory = r'D:/Data/RNB-Spring2025/Python MCT calibration'
+        self.directory = r'D:/Data/Fall25-Summer26/MCT-calib'
         self.file_input.filename_fixed = False
 
     def queue(self):
