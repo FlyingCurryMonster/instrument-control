@@ -9,6 +9,7 @@ from pymeasure.display.widgets import PlotWidget  # MyPlotWidget
 from pymeasure.experiment import Procedure, Results, unique_filename
 from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter
 from pyqtgraph import DateAxisItem
+import pyqtgraph as pg
 import zhinst.core
 
 
@@ -84,13 +85,13 @@ class FixedSizeBuffer:
 
 
 class zurich_measure(Procedure):
-    k = FloatParameter('k constant', units='1/V', default=9.61315e6)
-    xbkg = FloatParameter('X background', units='V', default=10*2*1.633e-6)
-    ybkg = FloatParameter('Y background', units='V', default=10*2*-4.21e-6)
+    k = FloatParameter('k constant', units='1/V', default=5.15615e7)
+    xbkg = FloatParameter('X background', units='V', default=0)
+    ybkg = FloatParameter('Y background', units='V', default=0)
 
     phase_limit = FloatParameter(
         'Phase limit',
-        units='deg', default=2)
+        units='deg', default=360)
 
     ringdown_time = FloatParameter(
         'Mininmum time to wait to rebalance',
@@ -277,6 +278,28 @@ class zurich_graph(ManagedDockWindow):
         )
         nyquist_plot.plot.getViewBox().setAspectLocked(True, ratio=1.0)
 
+        # Create two scatter plot items for bespoke Nyquist markers:
+        # - older points: outline-only (transparent fill)
+    # - recent points: filled with alpha varying linearly
+    #   (most recent most opaque)
+        self._nyquist_view = nyquist_plot.plot  # PlotItem
+        self._nyquist_scatter_old = pg.ScatterPlotItem(
+            size=6,
+            pen=pg.mkPen(color=(0, 0, 0), width=1),
+        )
+        self._nyquist_scatter_recent = pg.ScatterPlotItem(
+            size=8,
+            pen=pg.mkPen(color=(0, 0, 0), width=1),
+        )
+        # Add to the plot (older points underneath recent)
+        self._nyquist_view.addItem(self._nyquist_scatter_old)
+        self._nyquist_view.addItem(self._nyquist_scatter_recent)
+
+        # Connect the PlotWidget update signal to refresh the bespoke markers
+    # `updated` is forwarded from PlotFrame and is emitted on the
+    # refresh timer
+        nyquist_plot.updated.connect(self._on_nyquist_updated)
+
         super().__init__(
             procedure_class=zurich_measure,
             inputs=zurich_measure.params,
@@ -292,7 +315,7 @@ class zurich_graph(ManagedDockWindow):
                 {'bottom': DateAxisItem(utcOffset=LabView_t0 + timezone)})
 
         self.setWindowTitle('Zurich fixed freq PLL')
-        self.directory = r'D:/Data/RNB-Spring2025/Zurich fixed freq PLL data'
+        self.directory = r'D:/Data/Fall25-Summer26/TO pll tracking'
         self.file_input.filename_fixed = False
 
     def queue(self):
@@ -302,6 +325,92 @@ class zurich_graph(ManagedDockWindow):
         results = Results(procedure, filename)
         experiment = self.new_experiment(results)
         self.manager.queue(experiment)
+
+    def update_nyquist_points(self, xs, ys, recent_count=100,
+                              min_alpha=60, max_alpha=255,
+                              recent_color=(0, 120, 255),
+                              outline_color=(0, 0, 0)):
+        """
+        Update the Nyquist scatter:
+         - points older than recent_count are drawn as outline-only
+         - last recent_count points are filled with alpha varying linearly
+           (most recent = max_alpha)
+        xs, ys must be sequences in chronological order (oldest->newest).
+        """
+        xs = np.asarray(xs)
+        ys = np.asarray(ys)
+        N = len(xs)
+        if N == 0:
+            self._nyquist_scatter_old.setData([], [])
+            self._nyquist_scatter_recent.setData([], [])
+            return
+
+        cutoff = max(0, N - recent_count)
+        old_x, old_y = xs[:cutoff], ys[:cutoff]
+        recent_x, recent_y = xs[cutoff:], ys[cutoff:]
+
+        # older: outline only (transparent brush)
+        if len(old_x):
+            transparent_brushes = [pg.mkBrush(0, 0, 0, 0)] * len(old_x)
+            pen_old = pg.mkPen(color=outline_color, width=1)
+            self._nyquist_scatter_old.setData(x=old_x, y=old_y,
+                                              brush=transparent_brushes,
+                                              pen=pen_old,
+                                              size=6)
+        else:
+            self._nyquist_scatter_old.setData([], [])
+
+        # recent: per-point brushes with linearly varying alpha
+        if len(recent_x):
+            alphas = np.linspace(
+                min_alpha, max_alpha, len(recent_x)
+            ).astype(int)
+            brushes = [pg.mkBrush(*recent_color, int(a)) for a in alphas]
+            # optional: match pen alpha to fill alpha for nicer look
+            pens = [pg.mkPen((outline_color[0], outline_color[1],
+                              outline_color[2], int(a))) for a in alphas]
+            self._nyquist_scatter_recent.setData(x=recent_x, y=recent_y,
+                                                 brush=brushes,
+                                                 pen=pens,
+                                                 size=8)
+        else:
+            self._nyquist_scatter_recent.setData([], [])
+
+    def _on_nyquist_updated(self):
+        """Handler called on PlotWidget refresh; extracts the ResultsCurve data
+        from the nyquist plot (if present) and updates bespoke markers.
+        """
+        # Find the first ResultsCurve-like item in the plot (ResultsCurve is a
+        # PlotDataItem that the PlotWidget adds for the experiment data)
+        x_data = None
+        y_data = None
+        for item in self._nyquist_view.items:
+            # ResultsCurve inherits from PlotDataItem and stores `results` attr
+            if (
+                hasattr(item, 'results') and hasattr(item, 'x')
+                and hasattr(item, 'y')
+            ):
+                try:
+                    data = item.results.data
+                    x_data = data[item.x]
+                    y_data = data[item.y]
+                except Exception:
+                    # fallback: try to read from the plotted data directly
+                    try:
+                        xd, yd = item.getData()
+                        x_data = xd
+                        y_data = yd
+                    except Exception:
+                        x_data = None
+                        y_data = None
+                break
+
+        if x_data is None or y_data is None:
+            # nothing to update
+            return
+
+        # Ensure chronological order (Results.data is appended chronologically)
+        self.update_nyquist_points(x_data, y_data)
 
 
 if __name__ == '__main__':
