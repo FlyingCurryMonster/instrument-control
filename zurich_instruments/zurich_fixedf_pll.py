@@ -7,7 +7,7 @@ from pymeasure.display.Qt import QtWidgets
 from pymeasure.display.windows.managed_dock_window import ManagedDockWindow
 from pymeasure.display.widgets import PlotWidget  # MyPlotWidget
 from pymeasure.experiment import Procedure, Results, unique_filename
-from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter
+from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter, BooleanParameter
 from pyqtgraph import DateAxisItem
 import pyqtgraph as pg
 import zhinst.core
@@ -44,6 +44,16 @@ def fdrive_calculator(phi_degrees, Q, f0):
     adjust_factor = (phi / Q + np.sqrt(phi**2 / Q**2 + 4)) / 2
     return f0 / adjust_factor
 
+# Not necessary, you just want to control delta V over V
+def vane_motion(
+        x, y, detect_seperation,
+        C_detect, C_cable,
+        V_bias, preamp_gain):
+    r = np.sqrt(x ** 2 + y ** 2) / preamp_gain
+    C_factor = 1 + C_cable / C_detect
+
+    delta_d = detect_seperation * C_factor * r / V_bias
+    return delta_d
 
 class FixedSizeBuffer:
     def __init__(self, size):
@@ -88,6 +98,10 @@ class zurich_measure(Procedure):
     k = FloatParameter('k constant', units='1/V', default=5.15615e7)
     xbkg = FloatParameter('X background', units='V', default=0)
     ybkg = FloatParameter('Y background', units='V', default=0)
+
+    amp_pid = BooleanParameter('Amplitude PID', default=False)
+    amp_band = FloatParameter('Allowed amplitude deviation', units='V', default=0.1e-3)
+    target_amp = FloatParameter('Target amplitude', units='V', default=1e-3)
 
     phase_limit = FloatParameter(
         'Phase limit',
@@ -142,6 +156,7 @@ class zurich_measure(Procedure):
         self.adjust_times = FixedSizeBuffer(size=self.buffer_size)
         self.phase_buffer = FixedSizeBuffer(size=self.buffer_size)
         self.tau_buffer = FixedSizeBuffer(size=self.buffer_size)
+        self.amp_buffer = FixedSizeBuffer(size=self.buffer_size)
 
         self.adjust_times.append(0)
 
@@ -167,7 +182,7 @@ class zurich_measure(Procedure):
             tau = self.tau_buffer.get_buffer()[-1]
             last_rebalance_time = self.adjust_times.get_buffer()[-1]
             ringdown = max(self.num_tau * tau, self.ringdown_time)
-            delay_sufficient = utc_time - last_rebalance_time > ringdown
+            delay_sufficient = (utc_time - last_rebalance_time) > ringdown
 
             if delay_sufficient:
                 phase = np.rad2deg(np.arctan(Y/X))
@@ -177,9 +192,17 @@ class zurich_measure(Procedure):
                 phase_out_of_range = np.median(
                     np.abs(phase_tape) > self.phase_limit)
 
-                drive_reset_switch = phase_out_of_range and delay_sufficient
+                self.amp_buffer.append(np.sqrt(X**2 + Y**2) - self.target_amp)
+                amp_tape = self.amp_buffer.get_buffer()
+                amp_out_of_range = np.median(
+                    np.abs(amp_tape) > self.amp_band
+                )
+
+                freq_reset_switch = phase_out_of_range and delay_sufficient
+                amp_reset_switch = amp_out_of_range and self.amp_pid and delay_sufficient
             else:
-                drive_reset_switch = False
+                freq_reset_switch = False
+                amp_reset_switch = False
 
             data = {
                 'UTC': utc_time,
@@ -191,13 +214,48 @@ class zurich_measure(Procedure):
                 'V_drive': drive,
                 'f_drive': drive_freq,
                 'k': self.k,
-                'drive_reset': int(drive_reset_switch),
+                'drive_reset': int(freq_reset_switch or amp_reset_switch),
                 'ringing_down': int(not delay_sufficient),
             }
 
             self.emit('results', data)
+               
 
-            if drive_reset_switch:
+            if freq_reset_switch and not amp_reset_switch:
+                freq_reset_procedure()
+            
+            elif amp_reset_switch and not freq_reset_switch:
+                amp_reset_procedure()
+
+            elif freq_reset_switch and amp_reset_switch:
+                freq_reset_procedure()
+                amp_reset_procedure()
+                
+            else:
+                pass
+            
+            def amp_reset_procedure():
+                median_amp_deviation = np.median(amp_tape)
+                new_tau = Q_infer / (np.pi * f0_infer)
+                
+                # amp is too high, need to reduce the drive
+                if median_amp_deviation > 0:
+                    drive_scale_factor = (self.amp_center) / (self.target_amp + median_amp_deviation)
+                    new_drive = drive * drive_scale_factor
+                    self.zurich_set_amp(self.osc_num, new_drive)
+
+                    self.adjust_times.append(utc_time)
+                    self.tau_buffer.append(new_tau)
+                    self.amp_buffer.zero_the_buffer()
+
+                    change = new_drive - drive
+                    log.info(f'amplitude is off, {median_amp_deviation} V')
+                    log.warning(f'DRIVE changed by {change}V')
+                    log.info(
+                        'Ringdown is {:}*{:.7g} s'.format(
+                            self.num_tau, new_tau))
+
+            def freq_reset_procedure():
                 median_phase_deviation = np.median(phase_tape)
                 new_tau = Q_infer / (np.pi * f0_infer)
                 if median_phase_deviation > 0:
@@ -217,7 +275,7 @@ class zurich_measure(Procedure):
                     log.info(
                         'Ringdown is {:}*{:.7g} s'.format(
                             self.num_tau, new_tau))
-                    # log.info('RESETING THE DRIVE FREQ')
+
 
                 elif median_phase_deviation < 0:
                     # set the frequency to be a little higher
@@ -234,7 +292,8 @@ class zurich_measure(Procedure):
                     log.info(f'phase is LOW, {median_phase_deviation} deg')
                     log.warning(f'DRIVE adjusted by {change}Hz')
                     log.info('Ringdown is {:} * {:.3g} s'.format(
-                        self.num_tau, new_tau))
+                        self.num_tau, new_tau))            
+
 
             time.sleep(1/self.sample_rate)
 
@@ -249,6 +308,10 @@ class zurich_measure(Procedure):
     def zurich_get_amp(self, osc_num):
         osc_path = f'/{self.zur_id}/sigouts/0/amplitudes/{osc_num}'
         return self.daq.getDouble(osc_path)
+
+    def zurich_set_amp(self, osc_num, amp):
+        osc_path = f'/{self.zur_id}/sigouts/0/amplitudes/{osc_num}'
+        self.daq.setDouble(osc_path, amp)
 
     def zurich_set_freq(self, osc_num, f):
         osc_path = f'{self.zur_id}/oscs/{osc_num}/freq'
