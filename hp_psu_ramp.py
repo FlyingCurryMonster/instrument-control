@@ -35,7 +35,7 @@ class HP_PSU_Ramp(Procedure):
     ]
     DATA_COLUMNS = [
         'UTC', 'timestamp',
-        'control_voltage', 'measured_voltage',
+        'control_voltage', 'measured_voltage', 'residual',
     ]
 
     def startup(self):
@@ -43,67 +43,87 @@ class HP_PSU_Ramp(Procedure):
         self.control_voltage = self.start_voltage
 
         if self.channel == 1:
-            voltage_channel = self.psu.ch_1
+            self.voltage_channel = self.psu.ch_1
             if max(self.start_voltage, self.stop_voltage) > 6:
                 raise ValueError("Channel 1 max voltage is 6V")
             if min(self.start_voltage, self.stop_voltage) < 0:
                 raise ValueError("Channel 1 min voltage is 0V")
         elif self.channel == 2:
-            voltage_channel = self.psu.ch_2
+            self.voltage_channel = self.psu.ch_2
             if max(self.start_voltage, self.stop_voltage) > 25:
                 raise ValueError("Channel 2 max voltage is 25V")
             if min(self.start_voltage, self.stop_voltage) < 0:
                 raise ValueError("Channel 2 min voltage is 0V")
         elif self.channel == 3:
-            voltage_channel = self.psu.ch_3
+            self.voltage_channel = self.psu.ch_3
             if min(self.start_voltage, self.stop_voltage) < -25:
                 raise ValueError("Channel 3 min voltage is -25V")
             if max(self.start_voltage, self.stop_voltage) > 0:
                 raise ValueError("Channel 3 max voltage is 0V")
 
-        voltage_channel.voltage_setpoint = self.control_voltage
-        voltage_channel.output_enabled = True
+        self.voltage_channel.output_enabled = True
+        self.voltage_channel.voltage_setpoint = self.control_voltage
         self.t0 = time.time()
 
     def execute(self):
         length = self.stop_voltage - self.start_voltage
         rate = length / (self.time_duration * 3600)  # V/s
 
-        end_time = time.time() + self.time_duration * 3600
+        measured_voltage = self.voltage_channel.voltage
+        # set_time = time.time()
+        data = {
+            'UTC': time.time(),
+            'timestamp': time.time() - self.t0,
+            'control_voltage': self.control_voltage,
+            'measured_voltage': measured_voltage,
+            'residual': measured_voltage - self.control_voltage
+        }
+        self.emit('results', data)
+        time.sleep(5)
+
+        # end_time = time.time() + self.time_duration * 3600
         while (
             # self.control_voltage <= self.stop_voltage
             np.sign(length) * (self.stop_voltage - self.control_voltage) > 0
-            and time.time() < end_time
+            # and time.time() < end_time
+            and not self.should_stop()
         ):
 
             self.control_voltage += rate * 5  # update every 5 seconds
-            if self.control_voltage > self.stop_voltage:
-                self.control_voltage = self.stop_voltage
-            self.psu.ch_1.voltage_setpoint = self.control_voltage
-            measured_voltage = self.psu.ch_1.voltage_measured
+            # self.control_voltage = (
+            # self.start_voltage + rate * (time.time() - set_time))
+
+            self.voltage_channel.voltage_setpoint = self.control_voltage
+            measured_voltage = self.voltage_channel.voltage
+            # set_time = time.time()
 
             data = {
                 'UTC': time.time(),
                 'timestamp': time.time() - self.t0,
                 'control_voltage': self.control_voltage,
                 'measured_voltage': measured_voltage,
+                'residual': measured_voltage - self.control_voltage
             }
 
             self.emit('results', data)
 
             if length > 0:
-                if self.control_voltage >= self.stop_voltage:
+                if measured_voltage >= self.stop_voltage:
                     log.warning(
                         'Breaking, control voltage exceeded stop voltage'
                     )
                     break
             if length < 0:
-                if self.control_voltage <= self.stop_voltage:
+                if measured_voltage <= self.stop_voltage:
                     log.warning(
                         'Breaking, control voltage went below stop voltage'
                     )
                     break
+            if self.should_stop():
+                log.info('Stopping ramp as requested')
 
+            self.emit('progress', np.abs((
+                self.control_voltage - self.start_voltage) / length * 100))
             time.sleep(5)
 
 
