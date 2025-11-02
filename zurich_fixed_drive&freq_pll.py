@@ -9,7 +9,8 @@ from pymeasure.display.Qt import QtWidgets
 from pymeasure.display.windows.managed_dock_window import ManagedDockWindow
 from pymeasure.display.widgets import PlotWidget  # MyPlotWidget
 from pymeasure.experiment import Procedure, Results, unique_filename
-from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter, BooleanParameter
+from pymeasure.experiment import (IntegerParameter, FloatParameter,
+                                  Parameter, BooleanParameter)
 from pyqtgraph import DateAxisItem
 import pyqtgraph as pg
 import zhinst.core
@@ -22,6 +23,7 @@ LabView_t0 = 2082844800
 # Use an IANA timezone name so DST is handled correctly. Change this to your
 # local timezone if needed (e.g. "America/New_York").
 TZ_NAME = "America/New_York"
+
 
 def get_local_utc_offset_seconds(tz_name=TZ_NAME, timestamp=None):
     """Return local UTC offset in seconds for tz_name at given timestamp.
@@ -62,6 +64,7 @@ def fdrive_calculator(phi_degrees, Q, f0):
     adjust_factor = (phi / Q + np.sqrt(phi**2 / Q**2 + 4)) / 2
     return f0 / adjust_factor
 
+
 # Not necessary, you just want to control delta V over V
 def vane_motion(
         x, y, detect_seperation,
@@ -72,6 +75,7 @@ def vane_motion(
 
     delta_d = detect_seperation * C_factor * r / V_bias
     return delta_d
+
 
 class FixedSizeBuffer:
     def __init__(self, size):
@@ -118,7 +122,8 @@ class zurich_measure(Procedure):
     ybkg = FloatParameter('Y background', units='V', default=0)
 
     amp_pid = BooleanParameter('Amplitude PID', default=True)
-    amp_band = FloatParameter('Allowed amplitude deviation', units='V', default=0.05e-3)
+    amp_band = FloatParameter(
+        'Allowed amplitude deviation', units='V', default=0.05e-3)
     center_amp = FloatParameter('Target amplitude', units='V', default=1e-3)
 
     phase_limit = FloatParameter(
@@ -188,15 +193,25 @@ class zurich_measure(Procedure):
         # Record timezone name for runtime offset calculations
         self.tz_name = TZ_NAME
 
-        # Record start time in the same LabView + local-offset scale used for UTC
+        # Record start time in the same LabView
+        # + local-offset scale used for UTC
         now_unix = time.time()
-        self.t_start = now_unix + LabView_t0 + get_local_utc_offset_seconds(self.tz_name, timestamp=now_unix)
+        self.t_start = (
+            now_unix
+            + LabView_t0
+            + get_local_utc_offset_seconds(self.tz_name, timestamp=now_unix))
 
     def execute(self):
         while not self.should_stop():
             now_unix = time.time()
-            # Compute UTC time in LabView epoch plus current local offset (handles DST)
-            utc_time = now_unix + LabView_t0 + get_local_utc_offset_seconds(self.tz_name, timestamp=now_unix)
+            # Compute UTC time in LabView epoch
+            # plus current local offset (handles DST)
+            utc_time = (
+                now_unix
+                + LabView_t0
+                + get_local_utc_offset_seconds(
+                    self.tz_name, timestamp=now_unix))
+
             ts = utc_time - self.t_start
             xzur, yzur, drive_freq = self.zurich_sample_read()
             X, Y = xzur - self.xbkg, yzur - self.ybkg
@@ -222,10 +237,10 @@ class zurich_measure(Procedure):
                 amp_tape = self.amp_buffer.get_buffer()
                 amp_out_of_range = np.median(
                     np.abs(amp_tape)) > self.amp_band
-                
 
                 freq_reset_switch = phase_out_of_range and delay_sufficient
-                amp_reset_switch = amp_out_of_range and self.amp_pid and delay_sufficient
+                amp_reset_switch = (
+                    amp_out_of_range and self.amp_pid and delay_sufficient)
             else:
                 freq_reset_switch = False
                 amp_reset_switch = False
@@ -245,57 +260,46 @@ class zurich_measure(Procedure):
             }
 
             self.emit('results', data)
-               
 
-            if freq_reset_switch or amp_reset_switch:
-
-                freq_reset_procedure()
-                if self.amp_pid:
-                    amp_reset_procedure()
-                    self.amp_buffer.zero_the_buffer()
-                
-                new_tau = Q_infer / (np.pi * f0_infer)
-                self.adjust_times.append(utc_time)
-                self.tau_buffer.append(new_tau)
-                self.phase_buffer.zero_the_buffer()
-
-            else:
-                pass
-            
             def amp_reset_procedure():
                 median_amp_deviation = np.median(amp_tape)
-                
-                
+
                 # amp is too high, need to reduce the drive
                 if median_amp_deviation > 0:
                     target_amp = -0.5 * self.amp_band + self.center_amp
-                    drive_scale_factor = (target_amp) / (data['X'] **2 + data['Y'] **2) ** 0.5
+                    drive_scale_factor = (
+                        (target_amp)
+                        / (data['X'] ** 2 + data['Y'] ** 2) ** 0.5)
 
                     new_drive = drive * drive_scale_factor
                     self.zurich_set_amp(self.osc_num, new_drive)
 
                     log.info(f'amplitude is off, {median_amp_deviation} V')
-                    log.warning(f'DRIVE changed by factor of {new_drive/drive}')
+                    log.warning(
+                        f'DRIVE changed by factor of {new_drive/drive}')
                     log.info(
                         'Ringdown is {:}*{:.7g} s'.format(
                             self.num_tau, new_tau))
-                    
 
                     self.k = self.k * (drive / new_drive)
                     log.info(f'k adjusted to {self.k}')
                 # amp is too low, need to increase the drive
-                
+
                 elif median_amp_deviation < 0:
                     target_amp = 0.5 * self.amp_band + self.center_amp
-                    drive_scale_factor = (target_amp) / (data['X'] **2 + data['Y'] **2) ** 0.5
+                    drive_scale_factor = (
+                        (target_amp)
+                        / (data['X'] ** 2 + data['Y'] ** 2) ** 0.5)
 
                     new_drive = drive * drive_scale_factor
                     self.zurich_set_amp(self.osc_num, new_drive)
 
-                    log.info(f'amplitude is off, {median_amp_deviation} V')
-                    log.warning(f'DRIVE adjusted by factor of {new_drive/drive}')
+                    log.info(
+                        f'amplitude is off, {median_amp_deviation} V')
+                    log.warning(
+                        f'DRIVE adjusted by factor of {new_drive/drive}')
                     log.info('Ringdown is {:} * {:.3g} s'.format(
-                        self.num_tau, new_tau))            
+                        self.num_tau, new_tau))
 
                     self.k = self.k * (drive / new_drive)
                     log.info(f'k adjusted to {self.k}')
@@ -308,7 +312,7 @@ class zurich_measure(Procedure):
                     new_freq = fdrive_calculator(
                         target_phi, Q_infer, f0_infer)
 
-                    self.zurich_set_freq(self.osc_num, new_freq)                   
+                    self.zurich_set_freq(self.osc_num, new_freq)
 
                     change = new_freq - drive_freq
                     log.info(f'phase is HIGH, {median_phase_deviation} deg')
@@ -316,7 +320,6 @@ class zurich_measure(Procedure):
                     log.info(
                         'Ringdown is {:}*{:.7g} s'.format(
                             self.num_tau, new_tau))
-
 
                 elif median_phase_deviation < 0:
                     # set the frequency to be a little higher
@@ -329,8 +332,21 @@ class zurich_measure(Procedure):
                     log.info(f'phase is LOW, {median_phase_deviation} deg')
                     log.warning(f'DRIVE adjusted by {change}Hz')
                     log.info('Ringdown is {:} * {:.3g} s'.format(
-                        self.num_tau, new_tau))            
+                        self.num_tau, new_tau))
 
+            if freq_reset_switch or amp_reset_switch:
+                freq_reset_procedure()
+                if self.amp_pid:
+                    amp_reset_procedure()
+                    self.amp_buffer.zero_the_buffer()
+
+                new_tau = Q_infer / (np.pi * f0_infer)
+                self.adjust_times.append(utc_time)
+                self.tau_buffer.append(new_tau)
+                self.phase_buffer.zero_the_buffer()
+
+            else:
+                pass
 
             time.sleep(1/self.sample_rate)
 
@@ -367,7 +383,8 @@ class zurich_graph(ManagedDockWindow):
 
         # need to add offset for local time (DST-aware)
         time_axis_plot.plot.setAxisItems(
-            {'bottom': DateAxisItem(utcOffset=LabView_t0 + get_local_utc_offset_seconds())})
+            {'bottom': DateAxisItem(
+                utcOffset=LabView_t0 + get_local_utc_offset_seconds())})
 
         nyquist_plot = PlotWidget(
             name='Nyquist',
@@ -412,10 +429,14 @@ class zurich_graph(ManagedDockWindow):
 
         for plot_frame in self.dock_widget.plot_frames:
             plot_frame.plot.setAxisItems(
-                {'bottom': DateAxisItem(utcOffset=LabView_t0 + get_local_utc_offset_seconds())})
+                {'bottom': DateAxisItem(
+                    utcOffset=LabView_t0 + get_local_utc_offset_seconds())})
 
         self.setWindowTitle('Zurich fixed freq PLL')
-        self.directory = r'D:/Data/Fall25-Summer26/TO pll tracking'
+        self.directory = (
+            r'D:/Data/Fall25-Summer26/'
+            r'TO pll tracking constant strain'
+        )
         self.file_input.filename_fixed = False
 
     def queue(self):
