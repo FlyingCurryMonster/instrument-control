@@ -174,8 +174,8 @@ class zurich_measure(Procedure):
 
                 self.phase_buffer.append(phase)
                 phase_tape = self.phase_buffer.get_buffer()
-                phase_out_of_range = np.median(
-                    np.abs(phase_tape) > self.phase_limit)
+                phase_out_of_range = (
+                    np.median(np.abs(phase_tape)) > self.phase_limit)
 
                 drive_reset_switch = phase_out_of_range and delay_sufficient
             else:
