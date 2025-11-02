@@ -169,6 +169,19 @@ class zurich_measure(Procedure):
 
     def startup(self):
         log.info('Starting Zurich continuous measurement')
+
+        # Validate amplitude parameters: must be positive
+        # and leave a positive lower bound
+        if (
+            self.amp_band <= 0
+            or self.center_amp <= 0
+            or (self.center_amp - self.amp_band) <= 0
+        ):
+            raise ValueError(
+                "Invalid amplitude settings: amp_band and "
+                "center_amp must be > 0, "
+                "and (center_amp - amp_band) must be > 0."
+            )
         self.osc_num -= 1
         self.demod_num -= 1
 
@@ -241,12 +254,19 @@ class zurich_measure(Procedure):
 
                 self.amp_buffer.append(np.sqrt(X**2 + Y**2) - self.center_amp)
                 amp_tape = self.amp_buffer.get_buffer()
-                amp_out_of_range = np.median(
-                    np.abs(amp_tape)) > self.amp_band
+                amp_out_of_range = abs(np.median(amp_tape)) > self.amp_band
 
-                freq_reset_switch = phase_out_of_range and delay_sufficient
+                freq_reset_switch = (
+                    phase_out_of_range
+                    and delay_sufficient
+                    and len(phase_tape) > self.buffer_size / 4
+                    )
                 amp_reset_switch = (
-                    amp_out_of_range and self.amp_pid and delay_sufficient)
+                    amp_out_of_range
+                    and self.amp_pid
+                    and delay_sufficient
+                    and len(amp_tape) > self.buffer_size / 4
+                    )
 
                 if freq_reset_switch:
                     log.warning('frequency needs to be reset'
@@ -287,15 +307,13 @@ class zurich_measure(Procedure):
                         (target_amp)
                         / (data['X'] ** 2 + data['Y'] ** 2) ** 0.5)
 
-                    new_drive = drive * drive_scale_factor
+                    # min 20 to safeguard
+                    new_drive = drive * min(drive_scale_factor, 20)
                     self.zurich_set_amp(self.osc_num, new_drive)
 
                     log.info(f'amplitude is off, {median_amp_deviation} V')
                     log.warning(
                         f'DRIVE changed by factor of {new_drive/drive}')
-                    log.info(
-                        'Ringdown is {:}*{:.7g} s'.format(
-                            self.num_tau, new_tau))
 
                 # amp is too low, need to increase the drive
 
@@ -305,6 +323,7 @@ class zurich_measure(Procedure):
                         (target_amp)
                         / (data['X'] ** 2 + data['Y'] ** 2) ** 0.5)
 
+                    new_drive = drive * min(drive_scale_factor, 20)
                     self.zurich_set_amp(self.osc_num, new_drive)
 
                     log.info(
