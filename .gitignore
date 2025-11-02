@@ -1,3 +1,41 @@
 tidying-instrument-control.code-workspace
 instrument-control.code-workspace
 frequency_scanners/sandbox.ipynb
+data-files/misc/TO-magnet-pickup-01052024.csv
+data-files/zurich-PLL-noise/nikTO_vacuum_4V_pll.csv
+data-files/zurich-PLL-noise/nikTO_vacuum_4V-fixedfreq.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2023-12-16_2 (copy).csv
+data-files/zurich-PLL-noise/zurich-PID-noise2023-12-17_1 (copy).csv
+data-files/zurich-PLL-noise/zurich-PID-noise2023-12-17_2 (copy).csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-11_1.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-11_2.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-11_3.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-15_1.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-15_2.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-15_3.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-15_4.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-15_5.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-16_1.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-16_8.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-16_9.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-16_10.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-16_12.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-16_13.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-20_1.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-20_2.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-20_3.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-20_4.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-25_1.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-25_2.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-25_3.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-25_4.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-25_5.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-25_6.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-25_7.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-25_8.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-25_9.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-25_10.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-27_3.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-27_4.csv
+data-files/zurich-PLL-noise/zurich-PID-noise2024-04-27_5.csv
+data-files/zurich-PLL-noise/zurich-sr8302024-04-25_9.csv
