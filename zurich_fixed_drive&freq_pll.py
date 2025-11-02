@@ -117,18 +117,20 @@ class FixedSizeBuffer:
 
 
 class zurich_measure(Procedure):
-    k = FloatParameter('k constant', units='1/V', default=5.15615e7)
+    k = FloatParameter('k constant', units='1/V', default=110844134.42)
+    V0 = FloatParameter(
+        'Drive that k was obtained at', units='V', default=267.6e-6)
     xbkg = FloatParameter('X background', units='V', default=0)
     ybkg = FloatParameter('Y background', units='V', default=0)
 
     amp_pid = BooleanParameter('Amplitude PID', default=True)
     amp_band = FloatParameter(
-        'Allowed amplitude deviation', units='V', default=0.05e-3)
-    center_amp = FloatParameter('Target amplitude', units='V', default=1e-3)
+        'Allowed amplitude deviation', units='V', default=0.025e-3)
+    center_amp = FloatParameter('Target amplitude', units='V', default=1.04e-3)
 
     phase_limit = FloatParameter(
         'Phase limit',
-        units='deg', default=360)
+        units='deg', default=3)
 
     ringdown_time = FloatParameter(
         'Mininmum time to wait to rebalance',
@@ -147,7 +149,7 @@ class zurich_measure(Procedure):
     comments = Parameter('Comments/Notes')
 
     params = [
-        'k', 'phase_limit',
+        'k', 'V0', 'phase_limit',
         'amp_pid', 'amp_band', 'center_amp',
         'xbkg', 'ybkg',
         'num_tau', 'ringdown_time',
@@ -185,8 +187,10 @@ class zurich_measure(Procedure):
         self.adjust_times.append(0)
 
         xzur, yzur, drive_freq = self.zurich_sample_read()
-        Q_infer = calculate_Q_infer(xzur, yzur, self.k)
-        f0_infer = calculate_f0_infer(xzur, yzur, drive_freq, self.k)
+        drive = self.zurich_get_amp(osc_num=self.osc_num)
+        Q_infer = calculate_Q_infer(xzur, yzur, self.k * self.V0 / drive)
+        f0_infer = calculate_f0_infer(
+            xzur, yzur, drive_freq, self.k * self.V0 / drive)
         tau_initial = Q_infer / (np.pi * f0_infer)
 
         self.tau_buffer.append(tau_initial)
@@ -217,8 +221,10 @@ class zurich_measure(Procedure):
             X, Y = xzur - self.xbkg, yzur - self.ybkg
             drive = self.zurich_get_amp(osc_num=self.osc_num)
 
-            Q_infer = calculate_Q_infer(X, Y, self.k)
-            f0_infer = calculate_f0_infer(X, Y, drive_freq, self.k)
+            Q_infer = calculate_Q_infer(
+                X, Y, self.k * self.V0 / drive)
+            f0_infer = calculate_f0_infer(
+                X, Y, drive_freq, self.k * self.V0 / drive)
 
             tau = self.tau_buffer.get_buffer()[-1]
             last_rebalance_time = self.adjust_times.get_buffer()[-1]
@@ -241,6 +247,16 @@ class zurich_measure(Procedure):
                 freq_reset_switch = phase_out_of_range and delay_sufficient
                 amp_reset_switch = (
                     amp_out_of_range and self.amp_pid and delay_sufficient)
+
+                if freq_reset_switch:
+                    log.warning('frequency needs to be reset'
+                                + ' median phase is '
+                                + f'{np.median(phase_tape):.3g} deg')
+                if amp_reset_switch:
+                    log.warning('amplitude needs to be reset'
+                                + ' median amplitude deviation '
+                                + f'{np.median(amp_tape):.3g} V')
+
             else:
                 freq_reset_switch = False
                 amp_reset_switch = False
@@ -281,8 +297,6 @@ class zurich_measure(Procedure):
                         'Ringdown is {:}*{:.7g} s'.format(
                             self.num_tau, new_tau))
 
-                    self.k = self.k * (drive / new_drive)
-                    log.info(f'k adjusted to {self.k}')
                 # amp is too low, need to increase the drive
 
                 elif median_amp_deviation < 0:
@@ -291,22 +305,15 @@ class zurich_measure(Procedure):
                         (target_amp)
                         / (data['X'] ** 2 + data['Y'] ** 2) ** 0.5)
 
-                    new_drive = drive * drive_scale_factor
                     self.zurich_set_amp(self.osc_num, new_drive)
 
                     log.info(
                         f'amplitude is off, {median_amp_deviation} V')
                     log.warning(
                         f'DRIVE adjusted by factor of {new_drive/drive}')
-                    log.info('Ringdown is {:} * {:.3g} s'.format(
-                        self.num_tau, new_tau))
-
-                    self.k = self.k * (drive / new_drive)
-                    log.info(f'k adjusted to {self.k}')
 
             def freq_reset_procedure():
                 median_phase_deviation = np.median(phase_tape)
-                new_tau = Q_infer / (np.pi * f0_infer)
                 if median_phase_deviation > 0:
                     target_phi = -0.5 * self.phase_limit
                     new_freq = fdrive_calculator(
@@ -317,9 +324,6 @@ class zurich_measure(Procedure):
                     change = new_freq - drive_freq
                     log.info(f'phase is HIGH, {median_phase_deviation} deg')
                     log.warning(f'DRIVE changed by {change}Hz')
-                    log.info(
-                        'Ringdown is {:}*{:.7g} s'.format(
-                            self.num_tau, new_tau))
 
                 elif median_phase_deviation < 0:
                     # set the frequency to be a little higher
@@ -331,8 +335,6 @@ class zurich_measure(Procedure):
                     change = new_freq - drive_freq
                     log.info(f'phase is LOW, {median_phase_deviation} deg')
                     log.warning(f'DRIVE adjusted by {change}Hz')
-                    log.info('Ringdown is {:} * {:.3g} s'.format(
-                        self.num_tau, new_tau))
 
             if freq_reset_switch or amp_reset_switch:
                 freq_reset_procedure()
@@ -344,6 +346,8 @@ class zurich_measure(Procedure):
                 self.adjust_times.append(utc_time)
                 self.tau_buffer.append(new_tau)
                 self.phase_buffer.zero_the_buffer()
+                log.info('Ringdown is {:} * {:.3g} s'.format(
+                        self.num_tau, new_tau))
 
             else:
                 pass
@@ -432,7 +436,7 @@ class zurich_graph(ManagedDockWindow):
                 {'bottom': DateAxisItem(
                     utcOffset=LabView_t0 + get_local_utc_offset_seconds())})
 
-        self.setWindowTitle('Zurich fixed freq PLL')
+        self.setWindowTitle('Zurich amplitude and frequency PLL')
         self.directory = (
             r'D:/Data/Fall25-Summer26/'
             r'TO pll tracking constant strain'
