@@ -149,12 +149,15 @@ class HP_PSU_Ramp(Procedure):
                 log.info('Reached stop voltage (log-space ramp completed)')
                 break
 
-            # additionally, check measured voltage crossing stop depending on sign
-            if sign > 0:
+            # additionally, check measured voltage crossing stop depending on ramp direction
+            length = stop - start
+            if length > 0:
+                # ramp increasing: stop is greater than start
                 if measured_voltage >= stop:
                     log.warning('Breaking, measured voltage exceeded stop voltage')
                     break
             else:
+                # ramp decreasing: stop is less than start
                 if measured_voltage <= stop:
                     log.warning('Breaking, measured voltage went below stop voltage')
                     break
