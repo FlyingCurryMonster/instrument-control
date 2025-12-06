@@ -1,0 +1,278 @@
+import logging
+import sys
+import time
+from typing import Dict, Iterable, Optional
+
+import numpy as np
+import zhinst.core
+from pymeasure.display.console import ManagedConsole
+from pymeasure.experiment import (
+    BooleanParameter,
+    FloatParameter,
+    IntegerParameter,
+    Parameter,
+    Procedure,
+)
+
+log = logging.getLogger(__name__)
+log.addHandler(logging.NullHandler())
+
+
+class FreeDecayProcedure(Procedure):
+    """Drop the drive to zero and record the demodulated response."""
+
+    # How many decay captures to perform
+    iterations = IntegerParameter("Loop Iterations", default=1)
+
+    # Wait before the first drop when using the current drive
+    delay_before_drop = FloatParameter("Initial delay", units="s", default=0.2)
+
+    # Time spent measuring a single decay
+    measurement_time = FloatParameter("Measurement time", units="s", default=600)
+
+    # Time to allow the resonator to ring up between drops
+    ring_up_time = FloatParameter("Ring-up time", units="s", default=5.0)
+
+    # Drive selection
+    use_current_drive = BooleanParameter(
+        "Use current drive amplitude/frequency", default=True
+    )
+    initial_voltage = FloatParameter("Initial Voltage", units="V", default=0.1)
+    initial_frequency = FloatParameter("Initial Drive Frequency", units="Hz", default=32000)
+    settle_after_set = FloatParameter(
+        "Wait after setting drive", units="s", default=5.0
+    )
+
+    # Poll chunk duration so we can respect stop requests during long runs
+    poll_interval = FloatParameter("Poll interval", units="s", default=1.0)
+
+    # Zurich connection
+    zur_id = Parameter("Zurich addr.", default="dev4934")
+    osc_num = IntegerParameter("Oscillator number", default=1)
+    demod_num = IntegerParameter("Demodulator number", default=1)
+    server_host = Parameter("Server host", default="192.168.77.26")
+    server_port = IntegerParameter("Server port", default=8004)
+    interface = Parameter("Interface", default="PCIe")
+
+    DATA_COLUMNS = [
+        "iteration",
+        "t_rel",
+        "utc",
+        "x",
+        "y",
+        "phase_deg",
+        "frequency",
+        "drive_before_drop",
+        "drive_freq_setpoint",
+    ]
+
+    def startup(self):
+        log.info("Connecting to Zurich Instrument for free decay capture")
+
+        self.osc_index = self.osc_num - 1
+        self.demod_index = self.demod_num - 1
+
+        self.daq = zhinst.core.ziDAQServer(
+            self.server_host, int(self.server_port), api_level=6
+        )
+        self.daq.connectDevice(self.zur_id, interface=self.interface)
+        self.sample_path = f"/{self.zur_id}/demods/{self.demod_index}/sample"
+
+        # Ensure the demodulator is enabled
+        self.daq.set(f"/{self.zur_id}/demods/{self.demod_index}/enable", 1)
+
+        self.clockbase = self.daq.getInt(f"/{self.zur_id}/clockbase")
+
+        # Remember current settings so we can restore them later
+        self.restore_amp = self._zurich_get_amp(self.osc_index)
+        self.restore_freq = self._zurich_get_freq(self.osc_index)
+
+        if self.use_current_drive:
+            self.target_amp = self.restore_amp
+            self.target_freq = self.restore_freq
+            self.pre_drop_wait = self.delay_before_drop
+            log.info(
+                "Using current drive settings (%.3g V, %.3f Hz)",
+                self.target_amp,
+                self.target_freq,
+            )
+        else:
+            if self.initial_voltage <= 0:
+                raise ValueError("Initial voltage must be > 0 when not using current drive.")
+            if self.initial_frequency <= 0:
+                raise ValueError("Initial frequency must be > 0 when not using current drive.")
+            self.target_amp = self.initial_voltage
+            self.target_freq = self.initial_frequency
+            self.pre_drop_wait = self.settle_after_set
+
+            self._set_drive(self.target_amp, self.target_freq)
+            log.info(
+                "Set drive to %.3g V @ %.3f Hz; will wait %.2f s before first drop",
+                self.target_amp,
+                self.target_freq,
+                self.pre_drop_wait,
+            )
+
+    def execute(self):
+        for iteration in range(self.iterations):
+            if self.should_stop():
+                log.warning("Stop requested before iteration %d", iteration)
+                break
+
+            # Wait appropriate time before the drop
+            if iteration == 0:
+                wait_time = self.pre_drop_wait
+            else:
+                wait_time = self.ring_up_time
+
+            if wait_time > 0:
+                self._sleep_with_abort(wait_time)
+                if self.should_stop():
+                    log.warning("Stop requested while waiting before iteration %d", iteration)
+                    break
+
+            # Capture the drive settings right before we cut the drive
+            pre_drop_amp = self._zurich_get_amp(self.osc_index)
+            pre_drop_freq = self._zurich_get_freq(self.osc_index)
+
+            # Set drive to zero and start capturing immediately
+            self._set_drive(0.0, pre_drop_freq, amplitude_only=True)
+            drop_time = time.time()
+
+            log.info("Starting decay %d/%d", iteration + 1, self.iterations)
+            self._record_decay(iteration, drop_time, pre_drop_amp, pre_drop_freq)
+
+            progress = 100 * (iteration + 1) / self.iterations
+            self.emit("progress", progress)
+
+            if self.should_stop():
+                log.warning("Stop requested after iteration %d", iteration)
+                break
+
+            # Restore drive so the resonator can ring up for the next decay
+            if iteration < self.iterations - 1:
+                self._set_drive(self.target_amp, self.target_freq)
+
+        self.emit("progress", 100)
+
+    def shutdown(self):
+        log.info("Restoring original drive settings")
+        try:
+            self._set_drive(self.restore_amp, self.restore_freq)
+        except Exception:
+            log.exception("Unable to restore the original drive settings.")
+        log.info("Finished")
+
+    # --- Zurich helpers -------------------------------------------------
+    def _zurich_get_amp(self, osc_num: int) -> float:
+        osc_path = f"/{self.zur_id}/sigouts/0/amplitudes/{osc_num}"
+        return self.daq.getDouble(osc_path)
+
+    def _zurich_get_freq(self, osc_num: int) -> float:
+        osc_path = f"/{self.zur_id}/oscs/{osc_num}/freq"
+        return self.daq.getDouble(osc_path)
+
+    def _set_drive(self, amplitude: float, frequency: float, amplitude_only: bool = False):
+        amp_path = f"/{self.zur_id}/sigouts/0/amplitudes/{self.osc_index}"
+        self.daq.setDouble(amp_path, amplitude)
+        if not amplitude_only:
+            freq_path = f"/{self.zur_id}/oscs/{self.osc_index}/freq"
+            self.daq.setDouble(freq_path, frequency)
+        self.daq.sync()
+
+    # --- Data handling --------------------------------------------------
+    def _record_decay(
+        self,
+        iteration: int,
+        drop_time: float,
+        pre_drop_amp: float,
+        pre_drop_freq: float,
+    ):
+        """Subscribe and poll until the measurement window is finished."""
+        t_end = time.time() + self.measurement_time
+        self.daq.subscribe(self.sample_path)
+
+        try:
+            while time.time() < t_end and not self.should_stop():
+                chunk = min(self.poll_interval, t_end - time.time())
+                timeout_ms = int(1000 * (chunk + 0.1))
+                poll = self.daq.poll(chunk, timeout_ms=timeout_ms, flags=0, flat=True)
+                self._emit_from_poll(
+                    poll,
+                    iteration=iteration,
+                    drop_time=drop_time,
+                    drive_before_drop=pre_drop_amp,
+                    drive_freq_setpoint=pre_drop_freq,
+                )
+        finally:
+            self.daq.unsubscribe(self.sample_path)
+
+    def _emit_from_poll(
+        self,
+        poll_data: Dict,
+        iteration: int,
+        drop_time: float,
+        drive_before_drop: float,
+        drive_freq_setpoint: float,
+    ):
+        """Transform poll output into pymeasure result rows."""
+        sample = self._extract_sample(poll_data)
+        if not sample:
+            log.warning("No demod sample data returned for iteration %d", iteration)
+            return
+
+        xs = np.asarray(sample.get("x", []), dtype=float)
+        ys = np.asarray(sample.get("y", []), dtype=float)
+        freqs = np.asarray(sample.get("frequency", []), dtype=float)
+
+        times = sample.get("time")
+        if times is None:
+            timestamps = np.asarray(sample.get("timestamp", []), dtype=float)
+            if timestamps.size:
+                times = (timestamps - timestamps[0]) / float(self.clockbase)
+            else:
+                times = np.arange(len(xs), dtype=float) * 0.0
+        else:
+            times = np.asarray(times, dtype=float)
+
+        n = min(len(xs), len(ys), len(times))
+        for idx in range(n):
+            freq = freqs[idx] if idx < len(freqs) else np.nan
+            phase_deg = np.degrees(np.arctan2(ys[idx], xs[idx]))
+            utc = drop_time + float(times[idx])
+            data = {
+                "iteration": iteration,
+                "t_rel": float(times[idx]),
+                "utc": utc,
+                "x": float(xs[idx]),
+                "y": float(ys[idx]),
+                "phase_deg": float(phase_deg),
+                "frequency": float(freq),
+                "drive_before_drop": float(drive_before_drop),
+                "drive_freq_setpoint": float(drive_freq_setpoint),
+            }
+            self.emit("results", data)
+
+    def _extract_sample(self, poll_data: Dict) -> Optional[Dict[str, Iterable]]:
+        """Return the demod sample section regardless of poll dict shape."""
+        if self.sample_path in poll_data:
+            return poll_data[self.sample_path]
+
+        try:
+            return poll_data[self.zur_id]["demods"][str(self.demod_index)]["sample"]
+        except Exception:
+            return None
+
+    # --- Utility --------------------------------------------------------
+    def _sleep_with_abort(self, duration: float):
+        """Sleep in small chunks so stop requests are honored."""
+        end_time = time.time() + duration
+        while time.time() < end_time:
+            if self.should_stop():
+                break
+            time.sleep(min(0.1, end_time - time.time()))
+
+
+if __name__ == "__main__":
+    app = ManagedConsole(procedure_class=FreeDecayProcedure)
+    sys.exit(app.exec())
