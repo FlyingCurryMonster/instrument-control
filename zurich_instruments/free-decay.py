@@ -51,7 +51,8 @@ class FreeDecayProcedure(Procedure):
 
     # Zurich connection
     zur_id = Parameter("Zurich addr.", default="dev4934")
-    osc_num = IntegerParameter("Oscillator number", default=1)
+    # Lab uses 1-based numbering; defaults mirror the PLL script (osc=2, demod=1)
+    osc_num = IntegerParameter("Oscillator number", default=2)
     demod_num = IntegerParameter("Demodulator number", default=1)
     server_host = Parameter("Server host", default="192.168.77.26")
     server_port = IntegerParameter("Server port", default=8004)
@@ -89,6 +90,10 @@ class FreeDecayProcedure(Procedure):
 
     def startup(self):
         log.info("Connecting to Zurich Instrument for free decay capture")
+
+        # Initialize so shutdown can safely reference them even on startup failure
+        self.restore_amp = None
+        self.restore_freq = None
 
         self.osc_index = self.osc_num - 1
         self.demod_index = self.demod_num - 1
@@ -179,10 +184,57 @@ class FreeDecayProcedure(Procedure):
     def shutdown(self):
         log.info("Restoring original drive settings")
         try:
-            self._set_drive(self.restore_amp, self.restore_freq)
+            if self.restore_amp is not None and self.restore_freq is not None:
+                self._set_drive(self.restore_amp, self.restore_freq)
         except Exception:
             log.exception("Unable to restore the original drive settings.")
         log.info("Finished")
+
+    def check_parameters(self):
+        """Allow optional drive params when using current drive; validate otherwise."""
+        params = self.parameter_objects()
+
+        def ensure_set(name):
+            if params[name].value is None:
+                raise NameError(f"Missing value for '{name}'")
+
+        # Required in all modes
+        for required in [
+            "iterations",
+            "delay_before_drop",
+            "measurement_time",
+            "ring_up_time",
+            "use_current_drive",
+            "poll_interval",
+            "zur_id",
+            "osc_num",
+            "demod_num",
+            "server_host",
+            "server_port",
+            "interface",
+        ]:
+            ensure_set(required)
+
+        if not self.use_current_drive:
+            for opt in ["initial_voltage", "initial_frequency", "settle_after_set"]:
+                ensure_set(opt)
+
+        # Basic sanity checks
+        if self.iterations <= 0:
+            raise ValueError("iterations must be > 0")
+        if self.measurement_time <= 0:
+            raise ValueError("measurement_time must be > 0")
+        if self.poll_interval <= 0:
+            raise ValueError("poll_interval must be > 0")
+        if self.osc_num <= 0 or self.demod_num <= 0:
+            raise ValueError("osc_num and demod_num are 1-based and must be > 0")
+        if not self.use_current_drive:
+            if self.initial_voltage is None or self.initial_voltage <= 0:
+                raise ValueError("initial_voltage must be > 0 when not using current drive.")
+            if self.initial_frequency is None or self.initial_frequency <= 0:
+                raise ValueError("initial_frequency must be > 0 when not using current drive.")
+            if self.settle_after_set is None or self.settle_after_set < 0:
+                raise ValueError("settle_after_set must be >= 0 when not using current drive.")
 
     # --- Zurich helpers -------------------------------------------------
     def _zurich_get_amp(self, osc_num: int) -> float:
@@ -321,15 +373,14 @@ class FreeDecayWindow(ManagedDockWindow):
             x_axis=["t_rel"],
             y_axis=["x", "y", "phase_deg", "frequency"],
             widget_list=(decay_plot, phase_plot),
-            directory_input=True,
         )
 
         self.setWindowTitle("Zurich Free Decay Capture")
         self.filename_prefix = "free-decay"
-        self.directory = str(self._default_data_dir())
+        self.output_directory = self._default_data_dir()
 
     def queue(self):
-        directory = Path(self.directory).expanduser()
+        directory = Path(self.output_directory).expanduser()
         directory.mkdir(parents=True, exist_ok=True)
         filename = unique_filename(str(directory), prefix=f"{self.filename_prefix}_")
         procedure = self.make_procedure()
