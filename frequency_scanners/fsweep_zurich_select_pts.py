@@ -2,11 +2,10 @@ import logging
 import sys
 import time
 import numpy as np
-
-from pymeasure.display.Qt import QtWidgets
 from pymeasure.display.windows import ManagedWindow
 from pymeasure.experiment import Procedure, Results, unique_filename
 from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter
+from pymeasure.display.Qt import QtWidgets
 import zhinst.core
 
 log = logging.getLogger(__name__)
@@ -14,8 +13,8 @@ log.addHandler(logging.NullHandler())
 
 
 class zurich_fsweep(Procedure):
-    linewidth = FloatParameter('linewidth', units='Hz')
-    resonance_pt = FloatParameter('Resonance guess (Hz)')
+    Q_guess = FloatParameter('Q guess', units='unitless')
+    resonance_pt = FloatParameter('Resonance guess (Hz)', decimals=30)
     n_pts = IntegerParameter('Number of points', default=21)
     delay = FloatParameter('Delay (s)', default=1)
 
@@ -24,24 +23,30 @@ class zurich_fsweep(Procedure):
     zur_id = Parameter('Zurich addr.', default='dev4934')
     drive_amp = FloatParameter('Drive Amplitude (V)')
 
+    comments = Parameter('Comments/Notes')
+
     params = [
-        'linewidth', 'resonance_pt', 'n_pts',
+        'Q_guess', 'resonance_pt', 'n_pts',
         'delay',
         'zur_id', 'osc_num', 'demod_num', 'drive_amp',
+        'comments',
     ]
 
     DATA_COLUMNS = ['UTC', 'timestamp', 'f', 'R', 'phase', 'X', 'Y', 'drive_amp']
 
     def startup(self):
         log.info('Starting Zurich freq sweeper, with zurich drive and demod')
-
+        log.info(f'resonance guess at {self.resonance_pt}')
         self.osc_num -= 1
         self.demod_num -= 1
 
-        self.daq = zhinst.core.ziDAQServer('localhost', 8004, 6)
-        self.daq.connectDevice(self.zur_id, interface='1GbE')
+        zurich_ip_address = "192.168.77.26"
+        port = 8004
+        interface = 'PCIe'
+        self.daq = zhinst.core.ziDAQServer(zurich_ip_address, port, 6)
+        self.daq.connectDevice(self.zur_id, interface=interface)
         self.daq.set(f"/{self.zur_id}/demods/{self.demod_num}/enable", 1)
-        
+        self.linewidth= self.resonance_pt / self.Q_guess
         # Revised construction: ensure at least half the points lie inside
         # the linewidth, split the remaining points (outside) between left
         # and right. This handles odd n_pts correctly.
@@ -71,11 +76,14 @@ class zurich_fsweep(Procedure):
 
         # final frequency list for the sweep
         self.freq = np.concatenate([left_pts, inner_pts, right_pts])
+        log.info('Frequency points for sweep: {}'.format(self.freq))
 
         self.t_start = time.time()
         self.zurich_set_amp(self.osc_num, self.drive_amp)
+        log.info('Zurich drive amplitude set to ={}'.format(self.drive_amp))
         self.zurich_set_freq(self.freq[0])
-        time.sleep(self.delay*5)
+        log.info('Zurich frequency set to ={}'.format(self.freq[0]))
+        # time.sleep(self.delay)
 
     def execute(self):
         for i, f in enumerate(self.freq):
@@ -90,7 +98,7 @@ class zurich_fsweep(Procedure):
                 'timestamp': ts,
                 'f': freq_meas,
                 'R': np.sqrt(xzur**2 + yzur**2),
-                'phase': np.rad2deg(np.arctan(yzur, xzur)),
+                'phase': np.rad2deg(np.arctan(yzur/xzur)),
                 'X': xzur,
                 'Y': yzur,
                 'drive_amp': self.zurich_get_amp(self.osc_num),
@@ -133,7 +141,8 @@ class zurich_graph(ManagedWindow):
         )
 
         self.setWindowTitle('Zurich frequency sweeper')
-        self.directory = r'D:/Data/Zurich'
+        self.directory = r'D:/Data/Fall25-Summer26/TO freq-sweeps'
+        # D:\Data\Fall25-Summer26\TO freq-sweeps
         self.file_input.filename_fixed = False
 
     def queue(self):

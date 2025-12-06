@@ -216,7 +216,8 @@ class zurich_measure(Procedure):
         self.t_start = (
             now_unix
             + LabView_t0
-            + get_local_utc_offset_seconds(self.tz_name, timestamp=now_unix))
+            # + get_local_utc_offset_seconds(self.tz_name, timestamp=now_unix))
+        )
 
     def execute(self):
         while not self.should_stop():
@@ -225,9 +226,9 @@ class zurich_measure(Procedure):
             # plus current local offset (handles DST)
             utc_time = (
                 now_unix
-                + LabView_t0
-                + get_local_utc_offset_seconds(
-                    self.tz_name, timestamp=now_unix))
+                + LabView_t0)
+                # + get_local_utc_offset_seconds(
+                    # self.tz_name, timestamp=now_unix)
 
             ts = utc_time - self.t_start
             xzur, yzur, drive_freq = self.zurich_sample_read()
@@ -407,7 +408,7 @@ class zurich_graph(ManagedDockWindow):
         # need to add offset for local time (DST-aware)
         time_axis_plot.plot.setAxisItems(
             {'bottom': DateAxisItem(
-                utcOffset=LabView_t0 + get_local_utc_offset_seconds())})
+                utcOffset=LabView_t0 - get_local_utc_offset_seconds())})
 
         nyquist_plot = PlotWidget(
             name='Nyquist',
@@ -445,7 +446,7 @@ class zurich_graph(ManagedDockWindow):
             inputs=zurich_measure.params,
             displays=zurich_measure.params,
             x_axis=['UTC'],
-            y_axis=['X', 'Y', 'f_drive'],
+            y_axis=['Q_infer', 'f0_infer', 'X', 'Y'],
             widget_list=(time_axis_plot, nyquist_plot,)
 
         )
@@ -453,7 +454,7 @@ class zurich_graph(ManagedDockWindow):
         for plot_frame in self.dock_widget.plot_frames:
             plot_frame.plot.setAxisItems(
                 {'bottom': DateAxisItem(
-                    utcOffset=LabView_t0 + get_local_utc_offset_seconds())})
+                    utcOffset=LabView_t0 - get_local_utc_offset_seconds())})
 
         self.setWindowTitle('Zurich amplitude and frequency PLL')
         self.directory = (
