@@ -321,7 +321,7 @@ class FreeDecayWindow(ManagedDockWindow):
             x_axis=["t_rel"],
             y_axis=["x", "y", "phase_deg", "frequency"],
             widget_list=(decay_plot, phase_plot),
-            directory_input=True,
+            # directory_input=True,
         )
 
         self.setWindowTitle("Zurich Free Decay Capture")
