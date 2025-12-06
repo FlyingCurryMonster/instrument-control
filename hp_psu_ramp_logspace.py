@@ -17,6 +17,27 @@ log.addHandler(logging.NullHandler())
 # LabView_t0 = 2082844800
 timezone = 4 * 60 * 60
 
+# Temperature <-> Voltage calibration (assume exponential dependence)
+# Anchors: at V = 0.0 V -> T = 7 mK, at V = 3.0 V -> T = 100 mK
+# Model: T(V) = T0 * exp(k * (V - V0))  => with V0=0 simplifies to T0 * exp(k*V)
+T_REF_V0 = 0.0
+T_REF_T0 = 7e-3
+T_REF_V1 = 3.0
+T_REF_T1 = 0.100
+# exponential coefficient k
+_K_TEMP_V = np.log(T_REF_T1 / T_REF_T0) / (T_REF_V1 - T_REF_V0)
+
+def temp_from_voltage(v):
+    """Estimate temperature (K) from applied voltage (V) using exponential model."""
+    # use magnitude — sign handled by channel selection
+    return T_REF_T0 * np.exp(_K_TEMP_V * (v - T_REF_V0))
+
+def voltage_from_temp(t):
+    """Invert temperature to voltage using the exponential model."""
+    if t <= 0:
+        raise ValueError("Temperature must be positive to invert to voltage")
+    return (np.log(t / T_REF_T0) / _K_TEMP_V) + T_REF_V0
+
 
 class HP_PSU_Ramp(Procedure):
     gpib_address = Parameter('HP E3631A GPIB Address', default='1::2')
@@ -44,11 +65,14 @@ class HP_PSU_Ramp(Procedure):
         if self.time_duration <= 0:
             raise ValueError('time_duration must be > 0 for log-space ramp')
 
-        # For log-space ramp we require non-zero start/stop and same sign
-        if self.start_voltage == 0 or self.stop_voltage == 0:
-            raise ValueError('Start and stop voltages must be non-zero for log-space ramp')
-        if np.sign(self.start_voltage) != np.sign(self.stop_voltage):
-            raise ValueError('Start and stop voltages must have the same sign for log-space ramp')
+        # For log-temperature ramp we allow zero voltage (maps to T_REF_T0).
+        # Require start and stop have the same sign, unless one is exactly zero.
+        if (np.sign(self.start_voltage) != np.sign(self.stop_voltage)) and not (
+            self.start_voltage == 0 or self.stop_voltage == 0
+        ):
+            raise ValueError(
+                'Start and stop voltages must have the same sign (or one may be zero) for log-temperature ramp'
+            )
 
         self.control_voltage = self.start_voltage
 
@@ -93,16 +117,18 @@ class HP_PSU_Ramp(Procedure):
             self.emit('results', data)
             return
 
-        # prepare log-space endpoints (use absolute values, keep sign)
-        sign = np.sign(start)
+        # prepare endpoints: we'll interpolate linearly in ln(Temperature)
+        # determine sign to set at the end (prefer start's sign, fall back to stop)
+        sign = np.sign(start) if start != 0 else (np.sign(stop) if stop != 0 else 1)
         abs_start = abs(start)
         abs_stop = abs(stop)
 
-        if abs_start == 0 or abs_stop == 0:
-            raise ValueError('Start and stop magnitudes must be non-zero for log-space ramp')
+        # map endpoint voltages to temperatures using calibration model
+        T_start = temp_from_voltage(abs_start)
+        T_stop = temp_from_voltage(abs_stop)
 
-        log_start = np.log10(abs_start)
-        log_stop = np.log10(abs_stop)
+        ln_T_start = np.log(T_start)
+        ln_T_stop = np.log(T_stop)
 
         total_time = float(self.time_duration) * 3600.0
 
@@ -125,9 +151,11 @@ class HP_PSU_Ramp(Procedure):
             if frac >= 1.0:
                 frac = 1.0
 
-            # interpolate in log10 domain
-            log_val = log_start + frac * (log_stop - log_start)
-            self.control_voltage = sign * (10.0 ** log_val)
+            # interpolate linearly in ln(Temperature) domain, then map back to voltage
+            ln_T = ln_T_start + frac * (ln_T_stop - ln_T_start)
+            T_target = np.exp(ln_T)
+            V_mag = voltage_from_temp(T_target)
+            self.control_voltage = sign * V_mag
 
             self.voltage_channel.voltage_setpoint = self.control_voltage
             measured_voltage = self.voltage_channel.voltage
@@ -146,7 +174,7 @@ class HP_PSU_Ramp(Procedure):
 
             # Stop if we've reached the end fraction
             if frac >= 1.0:
-                log.info('Reached stop voltage (log-space ramp completed)')
+                log.info('Reached stop setpoint (log-temperature ramp completed)')
                 break
 
             # additionally, check measured voltage crossing stop depending on ramp direction
