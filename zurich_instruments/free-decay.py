@@ -1,17 +1,22 @@
 import logging
 import sys
 import time
+from pathlib import Path
 from typing import Dict, Iterable, Optional
 
 import numpy as np
 import zhinst.core
-from pymeasure.display.console import ManagedConsole
+from pymeasure.display.Qt import QtWidgets
+from pymeasure.display.widgets import PlotWidget
+from pymeasure.display.windows.managed_dock_window import ManagedDockWindow
 from pymeasure.experiment import (
     BooleanParameter,
     FloatParameter,
     IntegerParameter,
     Parameter,
     Procedure,
+    Results,
+    unique_filename,
 )
 
 log = logging.getLogger(__name__)
@@ -37,11 +42,9 @@ class FreeDecayProcedure(Procedure):
     use_current_drive = BooleanParameter(
         "Use current drive amplitude/frequency", default=True
     )
-    initial_voltage = FloatParameter("Initial Voltage", units="V", default=0.1)
-    initial_frequency = FloatParameter("Initial Drive Frequency", units="Hz", default=32000)
-    settle_after_set = FloatParameter(
-        "Wait after setting drive", units="s", default=5.0
-    )
+    initial_voltage = FloatParameter("Initial Voltage", units="V")
+    initial_frequency = FloatParameter("Initial Drive Frequency", units="Hz")
+    settle_after_set = FloatParameter("Wait after setting drive", units="s")
 
     # Poll chunk duration so we can respect stop requests during long runs
     poll_interval = FloatParameter("Poll interval", units="s", default=1.0)
@@ -53,6 +56,24 @@ class FreeDecayProcedure(Procedure):
     server_host = Parameter("Server host", default="192.168.77.26")
     server_port = IntegerParameter("Server port", default=8004)
     interface = Parameter("Interface", default="PCIe")
+
+    PARAMETERS = [
+        "iterations",
+        "delay_before_drop",
+        "measurement_time",
+        "ring_up_time",
+        "use_current_drive",
+        "initial_voltage",
+        "initial_frequency",
+        "settle_after_set",
+        "poll_interval",
+        "zur_id",
+        "osc_num",
+        "demod_num",
+        "server_host",
+        "server_port",
+        "interface",
+    ]
 
     DATA_COLUMNS = [
         "iteration",
@@ -189,7 +210,8 @@ class FreeDecayProcedure(Procedure):
         pre_drop_freq: float,
     ):
         """Subscribe and poll until the measurement window is finished."""
-        t_end = time.time() + self.measurement_time
+        t_start = time.time()
+        t_end = t_start + self.measurement_time
         self.daq.subscribe(self.sample_path)
 
         try:
@@ -204,6 +226,10 @@ class FreeDecayProcedure(Procedure):
                     drive_before_drop=pre_drop_amp,
                     drive_freq_setpoint=pre_drop_freq,
                 )
+                # Update progress within the iteration so the UI stays responsive
+                iter_frac = min(1.0, (time.time() - t_start) / self.measurement_time)
+                overall = 100.0 * (iteration + iter_frac) / max(1, self.iterations)
+                self.emit("progress", overall)
         finally:
             self.daq.unsubscribe(self.sample_path)
 
@@ -273,6 +299,52 @@ class FreeDecayProcedure(Procedure):
             time.sleep(min(0.1, end_time - time.time()))
 
 
+class FreeDecayWindow(ManagedDockWindow):
+    def __init__(self):
+        decay_plot = PlotWidget(
+            name="Demod X vs time",
+            columns=FreeDecayProcedure.DATA_COLUMNS,
+            x_axis="t_rel",
+            y_axis="x",
+        )
+        phase_plot = PlotWidget(
+            name="Phase vs time",
+            columns=FreeDecayProcedure.DATA_COLUMNS,
+            x_axis="t_rel",
+            y_axis="phase_deg",
+        )
+
+        super().__init__(
+            procedure_class=FreeDecayProcedure,
+            inputs=FreeDecayProcedure.PARAMETERS,
+            displays=FreeDecayProcedure.PARAMETERS,
+            x_axis=["t_rel"],
+            y_axis=["x", "y", "phase_deg", "frequency"],
+            widget_list=(decay_plot, phase_plot),
+            directory_input=True,
+        )
+
+        self.setWindowTitle("Zurich Free Decay Capture")
+        self.filename_prefix = "free-decay"
+        self.directory = str(self._default_data_dir())
+
+    def queue(self):
+        directory = Path(self.directory).expanduser()
+        directory.mkdir(parents=True, exist_ok=True)
+        filename = unique_filename(str(directory), prefix=f"{self.filename_prefix}_")
+        procedure = self.make_procedure()
+        results = Results(procedure, filename)
+        experiment = self.new_experiment(results)
+        self.manager.queue(experiment)
+
+    @staticmethod
+    def _default_data_dir() -> Path:
+        candidate = Path(__file__).resolve().parent.parent / "data-files/free-decay"
+        return candidate if candidate.exists() else Path.cwd()
+
+
 if __name__ == "__main__":
-    app = ManagedConsole(procedure_class=FreeDecayProcedure)
-    sys.exit(app.exec())
+    app = QtWidgets.QApplication(sys.argv)
+    window = FreeDecayWindow()
+    window.show()
+    sys.exit(app.exec_())
