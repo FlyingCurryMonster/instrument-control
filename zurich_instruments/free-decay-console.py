@@ -31,7 +31,12 @@ class FreeDecayConsole(ManagedConsole):
 def main():
     ProcedureCls = load_free_decay_procedure()
     app = FreeDecayConsole(procedure_class=ProcedureCls)
-    sys.exit(app.exec())
+    try:
+        sys.exit(app.exec())
+    except KeyboardInterrupt:
+        # Ensure cleanup and shutdown (restores original drive)
+        app.abort()
+        sys.exit(1)
 
 
 if __name__ == "__main__":

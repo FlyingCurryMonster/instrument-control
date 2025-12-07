@@ -33,10 +33,10 @@ class FreeDecayProcedure(Procedure):
     delay_before_drop = FloatParameter("Initial delay", units="s", default=0.2)
 
     # Time spent measuring a single decay
-    measurement_time = FloatParameter("Measurement time", units="s", default=600)
+    measurement_time = FloatParameter("Measurement time", units="s", default=300)
 
     # Time to allow the resonator to ring up between drops
-    ring_up_time = FloatParameter("Ring-up time", units="s", default=5.0)
+    ring_up_time = FloatParameter("Ring-up time", units="s", default=300)
 
     # Drive selection
     use_current_drive = BooleanParameter(
@@ -163,10 +163,26 @@ class FreeDecayProcedure(Procedure):
 
             # Set drive to zero and start capturing immediately
             self._set_drive(0.0, pre_drop_freq, amplitude_only=True)
-            drop_time = time.time()
+            drop_time_utc = time.time()
+
+            # Capture the device timestamp closest to the drop so we can align samples
+            drop_device_ts = None
+            try:
+                drop_sample = self.daq.getSample(self.sample_path)
+                ts_arr = np.asarray(drop_sample.get("timestamp", []), dtype=float)
+                if ts_arr.size:
+                    drop_device_ts = float(ts_arr[-1])
+            except Exception:
+                log.exception("Unable to read demod timestamp at drop; continuing without alignment.")
 
             log.info("Starting decay %d/%d", iteration + 1, self.iterations)
-            self._record_decay(iteration, drop_time, pre_drop_amp, pre_drop_freq)
+            self._record_decay(
+                iteration,
+                drop_time_utc,
+                drop_device_ts,
+                pre_drop_amp,
+                pre_drop_freq,
+            )
 
             progress = 100 * (iteration + 1) / self.iterations
             self.emit("progress", progress)
@@ -257,7 +273,8 @@ class FreeDecayProcedure(Procedure):
     def _record_decay(
         self,
         iteration: int,
-        drop_time: float,
+        drop_time_utc: float,
+        drop_device_ts: Optional[float],
         pre_drop_amp: float,
         pre_drop_freq: float,
     ):
@@ -274,7 +291,8 @@ class FreeDecayProcedure(Procedure):
                 self._emit_from_poll(
                     poll,
                     iteration=iteration,
-                    drop_time=drop_time,
+                    drop_time_utc=drop_time_utc,
+                    drop_device_ts=drop_device_ts,
                     drive_before_drop=pre_drop_amp,
                     drive_freq_setpoint=pre_drop_freq,
                 )
@@ -289,7 +307,8 @@ class FreeDecayProcedure(Procedure):
         self,
         poll_data: Dict,
         iteration: int,
-        drop_time: float,
+        drop_time_utc: float,
+        drop_device_ts: Optional[float],
         drive_before_drop: float,
         drive_freq_setpoint: float,
     ):
@@ -303,21 +322,30 @@ class FreeDecayProcedure(Procedure):
         ys = np.asarray(sample.get("y", []), dtype=float)
         freqs = np.asarray(sample.get("frequency", []), dtype=float)
 
-        times = sample.get("time")
-        if times is None:
-            timestamps = np.asarray(sample.get("timestamp", []), dtype=float)
-            if timestamps.size:
-                times = (timestamps - timestamps[0]) / float(self.clockbase)
-            else:
-                times = np.arange(len(xs), dtype=float) * 0.0
+        timestamps = np.asarray(sample.get("timestamp", []), dtype=float)
+
+        # Prefer timestamp-derived relative times so we can align to the drop instant.
+        times = None
+        if timestamps.size and drop_device_ts is not None:
+            times = (timestamps - drop_device_ts) / float(self.clockbase)
         else:
-            times = np.asarray(times, dtype=float)
+            times = sample.get("time")
+            if isinstance(times, dict):
+                # zhinst poll sometimes returns metadata dicts for "time"; fall back to timestamps
+                times = times.get("value")
+            if times is None:
+                if timestamps.size:
+                    times = (timestamps - timestamps[0]) / float(self.clockbase)
+                else:
+                    times = np.arange(len(xs), dtype=float) * 0.0
+            else:
+                times = np.asarray(times, dtype=float)
 
         n = min(len(xs), len(ys), len(times))
         for idx in range(n):
             freq = freqs[idx] if idx < len(freqs) else np.nan
             phase_deg = np.degrees(np.arctan2(ys[idx], xs[idx]))
-            utc = drop_time + float(times[idx])
+            utc = drop_time_utc + float(times[idx])
             data = {
                 "iteration": iteration,
                 "t_rel": float(times[idx]),
