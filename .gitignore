@@ -1,6 +1,7 @@
 tidying-instrument-control.code-workspace
 instrument-control.code-workspace
 frequency_scanners/sandbox.ipynb
+data-files/
 data-files/misc/TO-magnet-pickup-01052024.csv
 data-files/zurich-PLL-noise/nikTO_vacuum_4V_pll.csv
 data-files/zurich-PLL-noise/nikTO_vacuum_4V-fixedfreq.csv
