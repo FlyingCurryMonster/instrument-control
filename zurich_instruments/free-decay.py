@@ -57,6 +57,7 @@ class FreeDecayProcedure(Procedure):
     server_host = Parameter("Server host", default="192.168.77.26")
     server_port = IntegerParameter("Server port", default=8004)
     interface = Parameter("Interface", default="PCIe")
+    comments = Parameter("Comments/Notes", default="")
 
     PARAMETERS = [
         "iterations",
@@ -74,6 +75,7 @@ class FreeDecayProcedure(Procedure):
         "server_host",
         "server_port",
         "interface",
+        "comments",
     ]
 
     DATA_COLUMNS = [
@@ -405,12 +407,11 @@ class FreeDecayWindow(ManagedDockWindow):
 
         self.setWindowTitle("Zurich Free Decay Capture")
         self.filename_prefix = "free-decay"
-        self.output_directory = self._default_data_dir()
+        self.directory = self._default_data_dir()
 
     def queue(self):
-        directory = Path(self.output_directory).expanduser()
-        directory.mkdir(parents=True, exist_ok=True)
-        filename = unique_filename(str(directory), prefix=f"{self.filename_prefix}_")
+        # directory.mkdir(parents=True, exist_ok=True)
+        filename = unique_filename(str(self.directory), prefix=f"{self.filename_prefix}_")
         procedure = self.make_procedure()
         results = Results(procedure, filename)
         experiment = self.new_experiment(results)
@@ -418,8 +419,12 @@ class FreeDecayWindow(ManagedDockWindow):
 
     @staticmethod
     def _default_data_dir() -> Path:
-        candidate = Path(__file__).resolve().parent.parent / "data-files/free-decay"
-        return candidate if candidate.exists() else Path.cwd()
+        # Match PLL script convention: Fall25-Summer26/<experiment>
+        preferred = Path(r"D:/Data/Fall25-Summer26/free-decay")
+        if preferred.exists():
+            return preferred
+        fallback = Path(__file__).resolve().parent.parent / "data-files/free-decay"
+        return fallback if fallback.exists() else Path.cwd()
 
 
 if __name__ == "__main__":
