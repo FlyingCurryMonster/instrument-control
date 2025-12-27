@@ -127,10 +127,13 @@ class zurich_measure(Procedure):
     amp_band = FloatParameter(
         'Allowed amplitude deviation', units='V', default=0.025e-3)
     center_amp = FloatParameter('Target amplitude', units='V', default=1.04e-3)
+    target_amp_reset_fraction = FloatParameter('Target amplitude reset fraction', default=0.6)
 
     phase_limit = FloatParameter(
         'Phase limit',
         units='deg', default=3)
+    target_freq_reset_fraction = FloatParameter(
+        'Target phase reset fraction', default=0.6)
 
     ringdown_time = FloatParameter(
         'Mininmum time to wait to rebalance',
@@ -151,6 +154,8 @@ class zurich_measure(Procedure):
     params = [
         'k', 'V0', 'phase_limit',
         'amp_pid', 'amp_band', 'center_amp',
+        'target_amp_reset_fraction',
+        'target_freq_reset_fraction',
         'xbkg', 'ybkg',
         'num_tau', 'ringdown_time',
         'sample_rate', 'buffer_size',
@@ -172,16 +177,26 @@ class zurich_measure(Procedure):
 
         # Validate amplitude parameters: must be positive
         # and leave a positive lower bound
-        if (
-            self.amp_band <= 0
-            or self.center_amp <= 0
-            or (self.center_amp - self.amp_band) <= 0
-        ):
-            raise ValueError(
-                "Invalid amplitude settings: amp_band and "
-                "center_amp must be > 0, "
-                "and (center_amp - amp_band) must be > 0."
+        errors = []
+        if self.amp_band <= 0:
+            errors.append(f"amp_band ({self.amp_band}) must be > 0")
+        if self.center_amp <= 0:
+            errors.append(f"center_amp ({self.center_amp}) must be > 0")
+        if (self.center_amp - self.amp_band) <= 0:
+            errors.append(
+            f"(center_amp - amp_band) ({self.center_amp - self.amp_band}) must be > 0"
             )
+        if self.target_amp_reset_fraction <= 0:
+            errors.append(
+            f"target_amp_reset_fraction ({self.target_amp_reset_fraction}) must be > 0"
+            )
+        if self.target_freq_reset_fraction <= 0:
+            errors.append(
+            f"target_freq_reset_fraction ({self.target_freq_reset_fraction}) must be > 0"
+            )
+        if errors:
+            raise ValueError("Invalid amplitude settings: " + "; ".join(errors))
+
         self.osc_num -= 1
         self.demod_num -= 1
 
@@ -303,7 +318,7 @@ class zurich_measure(Procedure):
 
                 # amp is too high, need to reduce the drive
                 if median_amp_deviation > 0:
-                    target_amp = -0.5 * self.amp_band + self.center_amp
+                    target_amp = -1 * self.target_amp_reset_fraction * self.amp_band + self.center_amp
                     drive_scale_factor = (
                         (target_amp)
                         / (data['X'] ** 2 + data['Y'] ** 2) ** 0.5)
@@ -319,7 +334,7 @@ class zurich_measure(Procedure):
                 # amp is too low, need to increase the drive
 
                 elif median_amp_deviation < 0:
-                    target_amp = 0.5 * self.amp_band + self.center_amp
+                    target_amp = self.target_amp_reset_fraction * self.amp_band + self.center_amp
                     drive_scale_factor = (
                         (target_amp)
                         / (data['X'] ** 2 + data['Y'] ** 2) ** 0.5)
@@ -335,7 +350,7 @@ class zurich_measure(Procedure):
             def freq_reset_procedure():
                 median_phase_deviation = np.median(phase_tape)
                 if median_phase_deviation > 0:
-                    target_phi = -0.5 * self.phase_limit
+                    target_phi = -1 * self.target_freq_reset_fraction * self.phase_limit
                     new_freq = fdrive_calculator(
                         target_phi, Q_infer, f0_infer)
 
@@ -347,7 +362,7 @@ class zurich_measure(Procedure):
 
                 elif median_phase_deviation < 0:
                     # set the frequency to be a little higher
-                    target_phi = 0.5 * self.phase_limit
+                    target_phi = self.target_freq_reset_fraction * self.phase_limit
                     new_freq = fdrive_calculator(
                         target_phi, Q_infer, f0_infer)
                     self.zurich_set_freq(self.osc_num, new_freq)
