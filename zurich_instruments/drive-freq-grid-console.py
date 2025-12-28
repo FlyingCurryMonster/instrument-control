@@ -24,7 +24,7 @@ class DriveFrequencyGridProcedure(Procedure):
 
     drive_voltages = Parameter("Drive voltages (comma/space)", default=None)
     drive_frequencies = Parameter("Drive frequencies (comma/space)", default=None)
-    delay = FloatParameter("Delay after setting drive", units="s", default=0.2)
+    delay = FloatParameter("Delay after setting drive", units="s", default=600)
 
     zur_id = Parameter("Zurich addr.", default="dev4934")
     osc_num = IntegerParameter("Oscillator number", default=2)
