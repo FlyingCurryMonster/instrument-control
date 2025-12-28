@@ -472,11 +472,14 @@ class zurich_graph(ManagedDockWindow):
                     utcOffset=LabView_t0 - get_local_utc_offset_seconds())})
 
         self.setWindowTitle('Zurich amplitude and frequency PLL')
-        self.directory = (
-            r'D:/Data/Fall25-Summer26/'
-            r'TO pll tracking constant strain'
-        )
-        self.file_input.filename_fixed = False
+        # self.directory = (
+            # r'D:/Data/Fall25-Summer26/'
+            # r'TO pll tracking constant strain'
+        # )
+        # self.directory = (
+            # r'/home/rakin/rnb76-rclone/Parpia group/data/'
+        # )
+        # self.file_input.filename_fixed = False
 
     def queue(self):
         directory = self.directory
