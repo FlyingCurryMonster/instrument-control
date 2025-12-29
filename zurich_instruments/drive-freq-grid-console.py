@@ -10,6 +10,7 @@ import numpy as np
 import zhinst.core
 from pymeasure.display.console import ManagedConsole
 from pymeasure.experiment import (
+    BooleanParameter,
     FloatParameter,
     IntegerParameter,
     Parameter,
@@ -38,7 +39,8 @@ class DriveFrequencyGridProcedure(Procedure):
 
     drive_voltages = Parameter("Drive voltages (comma/space)", default=None)
     drive_frequencies = Parameter("Drive frequencies (comma/space)", default=None)
-    delay = FloatParameter("Delay after setting drive", units="s", default=600)
+    pairwise = BooleanParameter("Pair voltages/frequencies by index", default=True)
+    delay = FloatParameter("Delay after setting drive", units="s", default=0.2)
     k = FloatParameter("k constant", units="1/V", default=9.2604e7)
     v0_calib = FloatParameter("V0 calibration drive", units="V", default=267.64e-6)
 
@@ -53,6 +55,7 @@ class DriveFrequencyGridProcedure(Procedure):
     PARAMETERS = [
         "drive_voltages",
         "drive_frequencies",
+        "pairwise",
         "delay",
         "k",
         "v0_calib",
@@ -96,7 +99,14 @@ class DriveFrequencyGridProcedure(Procedure):
         self.voltages = self._parse_list(self.drive_voltages, "drive_voltages")
         self.frequencies = self._parse_list(self.drive_frequencies, "drive_frequencies")
 
-        self.total_steps = len(self.voltages) * len(self.frequencies)
+        if self.pairwise:
+            if len(self.voltages) != len(self.frequencies):
+                raise ValueError(
+                    "pairwise=True requires equal counts of voltages and frequencies."
+                )
+            self.total_steps = len(self.voltages)
+        else:
+            self.total_steps = len(self.voltages) * len(self.frequencies)
         if self.total_steps == 0:
             raise ValueError("No voltage/frequency points specified.")
 
@@ -112,52 +122,21 @@ class DriveFrequencyGridProcedure(Procedure):
 
     def execute(self):
         step_index = 0
-        for v_idx, voltage in enumerate(self.voltages):
-            for f_idx, frequency in enumerate(self.frequencies):
-                if self.should_stop():
-                    log.warning("Stop requested before step %d", step_index)
+        if self.pairwise:
+            for idx, (voltage, frequency) in enumerate(
+                zip(self.voltages, self.frequencies)
+            ):
+                if not self._run_point(step_index, idx, idx, voltage, frequency):
                     return
-
-                self._set_drive(voltage, frequency)
-
-                if self.delay > 0:
-                    if not self._sleep_with_abort(self.delay):
-                        log.warning("Stop requested during delay at step %d", step_index)
-                        return
-
-                x, y, freq_meas = self._zurich_sample_read()
-                amp_meas = self._zurich_get_amp(self.osc_index)
-                freq_readback = self._zurich_get_freq(self.osc_index)
-
-                if amp_meas > 0:
-                    k_effective = self.k * self.v0_calib / amp_meas
-                    Q_infer = calculate_Q_infer(x, y, k_effective)
-                    f0_infer = calculate_f0_infer(x, y, freq_meas, k_effective)
-                else:
-                    Q_infer = np.nan
-                    f0_infer = np.nan
-
-                data = {
-                    "step_index": step_index,
-                    "voltage_index": v_idx,
-                    "frequency_index": f_idx,
-                    "utc": time.time(),
-                    "voltage_set": float(voltage),
-                    "frequency_set": float(frequency),
-                    "voltage_readback": float(amp_meas),
-                    "frequency_readback": float(freq_readback),
-                    "frequency_measured": float(freq_meas),
-                    "Q_infer": float(Q_infer),
-                    "f0_infer": float(f0_infer),
-                    "x": float(x),
-                    "y": float(y),
-                    "r": float(np.sqrt(x**2 + y**2)),
-                    "phase_deg": float(np.degrees(np.arctan2(y, x))),
-                }
-
-                self.emit("results", data)
                 step_index += 1
                 self.emit("progress", 100.0 * step_index / max(1, self.total_steps))
+        else:
+            for v_idx, voltage in enumerate(self.voltages):
+                for f_idx, frequency in enumerate(self.frequencies):
+                    if not self._run_point(step_index, v_idx, f_idx, voltage, frequency):
+                        return
+                    step_index += 1
+                    self.emit("progress", 100.0 * step_index / max(1, self.total_steps))
 
         self.emit("progress", 100.0)
 
@@ -180,6 +159,7 @@ class DriveFrequencyGridProcedure(Procedure):
         for required in [
             "drive_voltages",
             "drive_frequencies",
+            "pairwise",
             "delay",
             "k",
             "v0_calib",
@@ -203,6 +183,10 @@ class DriveFrequencyGridProcedure(Procedure):
 
         voltages = self._parse_list(self.drive_voltages, "drive_voltages")
         frequencies = self._parse_list(self.drive_frequencies, "drive_frequencies")
+        if self.pairwise and len(voltages) != len(frequencies):
+            raise ValueError(
+                "pairwise=True requires equal counts of voltages and frequencies."
+            )
         if any(v < 0 for v in voltages):
             raise ValueError("drive_voltages must be >= 0")
         if any(f <= 0 for f in frequencies):
@@ -244,6 +228,51 @@ class DriveFrequencyGridProcedure(Procedure):
         self.daq.setDouble(amp_path, amplitude)
         self.daq.setDouble(freq_path, frequency)
         self.daq.sync()
+
+    def _run_point(self, step_index, v_idx, f_idx, voltage, frequency) -> bool:
+        if self.should_stop():
+            log.warning("Stop requested before step %d", step_index)
+            return False
+
+        self._set_drive(voltage, frequency)
+
+        if self.delay > 0:
+            if not self._sleep_with_abort(self.delay):
+                log.warning("Stop requested during delay at step %d", step_index)
+                return False
+
+        x, y, freq_meas = self._zurich_sample_read()
+        amp_meas = self._zurich_get_amp(self.osc_index)
+        freq_readback = self._zurich_get_freq(self.osc_index)
+
+        if amp_meas > 0:
+            k_effective = self.k * self.v0_calib / amp_meas
+            Q_infer = calculate_Q_infer(x, y, k_effective)
+            f0_infer = calculate_f0_infer(x, y, freq_meas, k_effective)
+        else:
+            Q_infer = np.nan
+            f0_infer = np.nan
+
+        data = {
+            "step_index": step_index,
+            "voltage_index": v_idx,
+            "frequency_index": f_idx,
+            "utc": time.time(),
+            "voltage_set": float(voltage),
+            "frequency_set": float(frequency),
+            "voltage_readback": float(amp_meas),
+            "frequency_readback": float(freq_readback),
+            "frequency_measured": float(freq_meas),
+            "Q_infer": float(Q_infer),
+            "f0_infer": float(f0_infer),
+            "x": float(x),
+            "y": float(y),
+            "r": float(np.sqrt(x**2 + y**2)),
+            "phase_deg": float(np.degrees(np.arctan2(y, x))),
+        }
+
+        self.emit("results", data)
+        return True
 
     def _sleep_with_abort(self, duration: float) -> bool:
         if duration <= 0:
