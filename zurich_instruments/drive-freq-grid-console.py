@@ -3,6 +3,7 @@ import logging
 import re
 import sys
 import time
+from pathlib import Path
 from typing import List
 
 import numpy as np
@@ -18,13 +19,28 @@ from pymeasure.experiment import (
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
+DEFAULT_RESULT_DIR = Path(
+    r"D:/Data/Fall25-Summer26/zurich grid search/zurich discrete points"
+)
+
+
+def calculate_Q_infer(X, Y, k):
+    return k * (X**2 + Y**2) / X
+
+
+def calculate_f0_infer(X, Y, f_drive, k):
+    Q = calculate_Q_infer(X, Y, k)
+    return f_drive * (1 + Y / (X * 2 * Q))
+
 
 class DriveFrequencyGridProcedure(Procedure):
     """Set drive amplitude/frequency pairs and log the demod X/Y response."""
 
     drive_voltages = Parameter("Drive voltages (comma/space)", default=None)
     drive_frequencies = Parameter("Drive frequencies (comma/space)", default=None)
-    delay = FloatParameter("Delay after setting drive", units="s", default=0.2)
+    delay = FloatParameter("Delay after setting drive", units="s", default=600)
+    k = FloatParameter("k constant", units="1/V", default=9.2604e7)
+    v0_calib = FloatParameter("V0 calibration drive", units="V", default=267.64e-6)
 
     zur_id = Parameter("Zurich addr.", default="dev4934")
     osc_num = IntegerParameter("Oscillator number", default=2)
@@ -38,6 +54,8 @@ class DriveFrequencyGridProcedure(Procedure):
         "drive_voltages",
         "drive_frequencies",
         "delay",
+        "k",
+        "v0_calib",
         "zur_id",
         "osc_num",
         "demod_num",
@@ -57,6 +75,8 @@ class DriveFrequencyGridProcedure(Procedure):
         "voltage_readback",
         "frequency_readback",
         "frequency_measured",
+        "Q_infer",
+        "f0_infer",
         "x",
         "y",
         "r",
@@ -101,14 +121,21 @@ class DriveFrequencyGridProcedure(Procedure):
                 self._set_drive(voltage, frequency)
 
                 if self.delay > 0:
-                    self._sleep_with_abort(self.delay)
-                    if self.should_stop():
+                    if not self._sleep_with_abort(self.delay):
                         log.warning("Stop requested during delay at step %d", step_index)
                         return
 
                 x, y, freq_meas = self._zurich_sample_read()
                 amp_meas = self._zurich_get_amp(self.osc_index)
                 freq_readback = self._zurich_get_freq(self.osc_index)
+
+                if amp_meas > 0:
+                    k_effective = self.k * self.v0_calib / amp_meas
+                    Q_infer = calculate_Q_infer(x, y, k_effective)
+                    f0_infer = calculate_f0_infer(x, y, freq_meas, k_effective)
+                else:
+                    Q_infer = np.nan
+                    f0_infer = np.nan
 
                 data = {
                     "step_index": step_index,
@@ -120,6 +147,8 @@ class DriveFrequencyGridProcedure(Procedure):
                     "voltage_readback": float(amp_meas),
                     "frequency_readback": float(freq_readback),
                     "frequency_measured": float(freq_meas),
+                    "Q_infer": float(Q_infer),
+                    "f0_infer": float(f0_infer),
                     "x": float(x),
                     "y": float(y),
                     "r": float(np.sqrt(x**2 + y**2)),
@@ -152,6 +181,8 @@ class DriveFrequencyGridProcedure(Procedure):
             "drive_voltages",
             "drive_frequencies",
             "delay",
+            "k",
+            "v0_calib",
             "zur_id",
             "osc_num",
             "demod_num",
@@ -163,6 +194,10 @@ class DriveFrequencyGridProcedure(Procedure):
 
         if self.delay < 0:
             raise ValueError("delay must be >= 0")
+        if self.k <= 0:
+            raise ValueError("k must be > 0")
+        if self.v0_calib <= 0:
+            raise ValueError("v0_calib must be > 0")
         if self.osc_num <= 0 or self.demod_num <= 0:
             raise ValueError("osc_num and demod_num are 1-based and must be > 0")
 
@@ -210,12 +245,20 @@ class DriveFrequencyGridProcedure(Procedure):
         self.daq.setDouble(freq_path, frequency)
         self.daq.sync()
 
-    def _sleep_with_abort(self, duration: float):
+    def _sleep_with_abort(self, duration: float) -> bool:
+        if duration <= 0:
+            return True
         end_time = time.time() + duration
-        while time.time() < end_time:
+        while True:
             if self.should_stop():
-                break
-            time.sleep(min(0.1, end_time - time.time()))
+                return False
+            remaining = end_time - time.time()
+            if remaining <= 0:
+                return True
+            try:
+                time.sleep(min(0.1, remaining))
+            except KeyboardInterrupt:
+                return False
 
 
 class DriveFrequencyGridConsole(ManagedConsole):
@@ -226,6 +269,16 @@ class DriveFrequencyGridConsole(ManagedConsole):
         self.parameter_values = {
             k: v for k, v in self.parameter_values.items() if v is not None
         }
+        if not self._result_dir_explicit() and self.directory in (None, "", "."):
+            self.directory = str(DEFAULT_RESULT_DIR)
+            DEFAULT_RESULT_DIR.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _result_dir_explicit():
+        for arg in sys.argv[1:]:
+            if arg == "--result-directory" or arg.startswith("--result-directory="):
+                return True
+        return False
 
 
 def main():
