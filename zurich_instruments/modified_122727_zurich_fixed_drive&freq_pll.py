@@ -261,7 +261,8 @@ class zurich_measure(Procedure):
             delay_sufficient = (utc_time - last_rebalance_time) > ringdown
 
             if delay_sufficient:
-                phase = np.rad2deg(np.arctan(Y/X))
+                # phase = np.rad2deg(np.arctan(Y/X))
+                phase = np.rad2deg(np.arctan2(Y, X))
 
                 self.phase_buffer.append(phase)
                 phase_tape = self.phase_buffer.get_buffer()
@@ -347,32 +348,38 @@ class zurich_measure(Procedure):
                     log.warning(
                         f'DRIVE adjusted by factor of {new_drive/drive}')
 
-            def freq_reset_procedure():
+            def freq_reset_procedure(use_median_freq: bool):
                 median_phase_deviation = np.median(phase_tape)
+
+                if use_median_freq:
+                    y_over_x = np.tan(np.deg2rad(median_phase_deviation))
+                    f0_val = drive_freq * (1 + y_over_x / (2  * Q_infer))
+                else:
+                    f0_val = f0_infer
                 if median_phase_deviation > 0:
                     target_phi = -1 * self.target_freq_reset_fraction * self.phase_limit
                     new_freq = fdrive_calculator(
-                        target_phi, Q_infer, f0_infer)
+                        target_phi, Q_infer, f0_val)
 
                     self.zurich_set_freq(self.osc_num, new_freq)
 
                     change = new_freq - drive_freq
                     log.info(f'phase is HIGH, {median_phase_deviation} deg')
-                    log.warning(f'DRIVE changed by {change}Hz')
+                    log.warning(f'DRIVE freq changed by {change}Hz')
 
                 elif median_phase_deviation < 0:
                     # set the frequency to be a little higher
                     target_phi = self.target_freq_reset_fraction * self.phase_limit
                     new_freq = fdrive_calculator(
-                        target_phi, Q_infer, f0_infer)
+                        target_phi, Q_infer, f0_val)
                     self.zurich_set_freq(self.osc_num, new_freq)
 
                     change = new_freq - drive_freq
                     log.info(f'phase is LOW, {median_phase_deviation} deg')
-                    log.warning(f'DRIVE adjusted by {change}Hz')
+                    log.warning(f'DRIVE freq adjusted by {change}Hz')
 
             if freq_reset_switch or amp_reset_switch:
-                freq_reset_procedure()
+                freq_reset_procedure(use_median_freq=True)
                 if self.amp_pid:
                     amp_reset_procedure()
                     self.amp_buffer.zero_the_buffer()
