@@ -1,20 +1,33 @@
 import logging
+import re
 import sys
 import time
 import numpy as np
 from pymeasure.display.windows import ManagedWindow
 from pymeasure.experiment import Procedure, Results, unique_filename
 from pymeasure.experiment import IntegerParameter, FloatParameter, Parameter, BooleanParameter
+from pymeasure.display.inputs import ScientificInput
 from pymeasure.display.Qt import QtWidgets
 import zhinst.core
 
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
+class HighPrecisionScientificInput(ScientificInput):
+    def textFromValue(self, value):
+        precision = max(1, getattr(self._parameter, "decimals", 15))
+        string = f"{value:.{precision}g}".replace("e+", "e")
+        string = re.sub(r"e(-?)0*(\d+)", r"e\1\2", string)
+        return string
+
 
 class zurich_fsweep(Procedure):
     Q_guess = FloatParameter('Q guess', units='unitless')
-    resonance_pt = FloatParameter('Resonance guess (Hz)', decimals=30)
+    resonance_pt = FloatParameter(
+        'Resonance guess (Hz)',
+        decimals=30,
+        ui_class=HighPrecisionScientificInput
+    )
     n_pts = IntegerParameter('Number of points', default=21)
     delay = FloatParameter('Delay (s)', default=1)
     reverse = BooleanParameter('Reverse sweep', default=False)
