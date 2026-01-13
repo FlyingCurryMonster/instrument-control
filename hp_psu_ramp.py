@@ -79,6 +79,7 @@ class HP_PSU_Ramp(Procedure):
             'residual': measured_voltage - self.control_voltage
         }
         self.emit('results', data)
+        self.t1 = time.monotonic()
         time.sleep(5)
 
         # end_time = time.time() + self.time_duration * 3600
@@ -89,7 +90,11 @@ class HP_PSU_Ramp(Procedure):
             and not self.should_stop()
         ):
 
-            self.control_voltage += rate * 5  # update every 5 seconds
+            now = time.monotonic()
+            dt = now - self.t1
+            self.t1 = now
+            # self.control_voltage += rate * 5  # update every 5 seconds
+            self.control_voltage += rate * dt
             # self.control_voltage = (
             # self.start_voltage + rate * (time.time() - set_time))
 
@@ -108,20 +113,20 @@ class HP_PSU_Ramp(Procedure):
             self.emit('results', data)
 
             if length > 0:
-                if measured_voltage >= self.stop_voltage:
+                if self.control_voltage >= self.stop_voltage:
                     log.warning(
                         'Breaking, control voltage exceeded stop voltage'
                     )
                     break
             if length < 0:
-                if measured_voltage <= self.stop_voltage:
+                if self.control_voltage <= self.stop_voltage:
                     log.warning(
                         'Breaking, control voltage went below stop voltage'
                     )
                     break
             if self.should_stop():
                 log.info('Stopping ramp as requested')
-
+                break
             self.emit('progress', np.abs((
                 self.control_voltage - self.start_voltage) / length * 100))
             time.sleep(5)
