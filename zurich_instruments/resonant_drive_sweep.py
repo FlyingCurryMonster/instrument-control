@@ -433,7 +433,7 @@ class ResonantDriveSweepWindow(ManagedDockWindow):
             y_axis=["Q_infer", "f0_infer", "phase"],
             widget_list=(drive_plot, phase_plot, q_plot, nyquist_plot),
             inputs_in_scrollarea=True,
-            directory_input=True,
+            # directory_input=True,
         )
         self.setWindowTitle("Zurich Resonant Drive Sweep")
         self.directory = "data-files"
