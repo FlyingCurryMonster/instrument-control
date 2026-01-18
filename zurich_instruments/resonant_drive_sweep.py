@@ -39,8 +39,8 @@ class ResonantDriveSweepProcedure(Procedure):
     xbkg = FloatParameter("X background", units="V", default=-7.897e-05)
     ybkg = FloatParameter("Y background", units="V", default=-5.93456e-05)
 
-    start_drive = FloatParameter("Start drive", units="V", default=70e-6)
-    end_drive = FloatParameter("End drive", units="V", default=6e-6)
+    start_drive = FloatParameter("Start drive", units="V", default=0.1e-3)
+    end_drive = FloatParameter("End drive", units="V", default=10e-3)
     num_points = IntegerParameter("Number of points", default=10)
     logspace = BooleanParameter("Log10 grid", default=False)
 
@@ -436,7 +436,7 @@ class ResonantDriveSweepWindow(ManagedDockWindow):
             # directory_input=True,
         )
         self.setWindowTitle("Zurich Resonant Drive Sweep")
-        self.directory = "data-files"
+        # self.directory = "data-files"
 
     def queue(self):
         directory = self.directory
