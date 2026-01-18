@@ -189,32 +189,28 @@ class ResonantDriveSweepProcedure(Procedure):
             else:
                 start_freq = float(current_freq)
 
-            result, final_freq = self._tune_and_measure(
+            final_freq, completed = self._tune_and_measure(
                 drive=drive,
                 start_freq=start_freq,
                 retune=retune,
+                drive_index=idx,
+                sweep_direction=direction,
             )
             current_freq = final_freq
             if direction > 0:
                 self.up_sweep_freqs[idx] = final_freq
-
-            if result is None:
+            if not completed:
                 break
-
-            result.update(
-                {
-                    "step_index": int(self.step_index),
-                    "drive_index": int(idx),
-                    "sweep_direction": int(direction),
-                }
-            )
-            self.emit("results", result)
-            self.step_index += 1
         return current_freq
 
     def _tune_and_measure(
-        self, drive: float, start_freq: float, retune: bool
-    ) -> Tuple[Optional[dict], float]:
+        self,
+        drive: float,
+        start_freq: float,
+        retune: bool,
+        drive_index: int,
+        sweep_direction: int,
+    ) -> Tuple[float, bool]:
         current_freq = float(start_freq)
         iterations = 0
         retuned = False
@@ -222,12 +218,12 @@ class ResonantDriveSweepProcedure(Procedure):
 
         while True:
             if self.should_stop():
-                return None, current_freq
+                return current_freq, False
 
             self._set_drive(drive, current_freq)
             last_delay = self._delay_after_set(self.last_tau)
             if not self._sleep_with_abort(last_delay):
-                return None, current_freq
+                return current_freq, False
 
             measurement = self._measure_once()
             iterations += 1
@@ -235,32 +231,28 @@ class ResonantDriveSweepProcedure(Procedure):
             in_band = abs(measurement["phase"]) <= self.phase_band
             self._update_last_tau(measurement)
 
+            measurement.update(
+                {
+                    "step_index": int(self.step_index),
+                    "drive_index": int(drive_index),
+                    "sweep_direction": int(sweep_direction),
+                    "drive_set": float(drive),
+                    "f_drive_set": float(current_freq),
+                    "in_band": int(in_band),
+                    "iterations": int(iterations),
+                    "retuned": int(retuned),
+                    "delay_used": float(last_delay),
+                }
+            )
+            self.emit("results", measurement)
+            self.step_index += 1
+
             if in_band or not retune or iterations >= self.max_iterations:
-                measurement.update(
-                    {
-                        "drive_set": float(drive),
-                        "f_drive_set": float(current_freq),
-                        "in_band": int(in_band),
-                        "iterations": int(iterations),
-                        "retuned": int(retuned),
-                        "delay_used": float(last_delay),
-                    }
-                )
-                return measurement, current_freq
+                return current_freq, True
 
             f0_infer = measurement["f0_infer"]
             if not np.isfinite(f0_infer):
-                measurement.update(
-                    {
-                        "drive_set": float(drive),
-                        "f_drive_set": float(current_freq),
-                        "in_band": 0,
-                        "iterations": int(iterations),
-                        "retuned": int(retuned),
-                        "delay_used": float(last_delay),
-                    }
-                )
-                return measurement, current_freq
+                return current_freq, True
 
             current_freq = float(f0_infer)
             retuned = True
