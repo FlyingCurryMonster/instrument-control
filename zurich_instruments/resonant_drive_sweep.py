@@ -34,17 +34,17 @@ def calculate_f0_infer(x: float, y: float, f_drive: float, k: float) -> float:
 class ResonantDriveSweepProcedure(Procedure):
     """Sweep drive amplitude while retuning to resonance at each point."""
 
-    k = FloatParameter("k constant", units="1/V", default=110844134.42)
+    k = FloatParameter("k constant", units="1/V", default=93260373.7208108)
     V0 = FloatParameter("Drive that k was obtained at", units="V", default=267.6e-6)
-    xbkg = FloatParameter("X background", units="V", default=0)
-    ybkg = FloatParameter("Y background", units="V", default=0)
+    xbkg = FloatParameter("X background", units="V", default=-7.897e-05)
+    ybkg = FloatParameter("Y background", units="V", default=-5.93456e-05)
 
-    start_drive = FloatParameter("Start drive", units="V", default=1e-6)
-    end_drive = FloatParameter("End drive", units="V", default=1e-3)
-    num_points = IntegerParameter("Number of points", default=25)
+    start_drive = FloatParameter("Start drive", units="V", default=70e-6)
+    end_drive = FloatParameter("End drive", units="V", default=6e-6)
+    num_points = IntegerParameter("Number of points", default=10)
     logspace = BooleanParameter("Log10 grid", default=False)
 
-    reverse_sweep = BooleanParameter("Reverse sweep", default=False)
+    reverse_sweep = BooleanParameter("Reverse sweep", default=True)
     retune_down_sweep = BooleanParameter("Retune to resonance on down sweep", default=False)
 
     phase_band = FloatParameter("Phase band", units="deg", default=5.0)
@@ -53,7 +53,7 @@ class ResonantDriveSweepProcedure(Procedure):
     use_current_frequency = BooleanParameter("Use current frequency", default=True)
     initial_frequency = FloatParameter("Initial frequency", units="Hz", default=0.0)
 
-    fixed_delay_time = FloatParameter("Fixed delay time", units="s", default=0.5)
+    fixed_delay_time = FloatParameter("Fixed delay time", units="s", default=500)
     delay_mode = Parameter("Delay mode (fixed|max|tau)", default="fixed")
 
     file_prefix = Parameter("File prefix", default="resonant_drive_sweep")
@@ -102,14 +102,13 @@ class ResonantDriveSweepProcedure(Procedure):
         "drive_readback",
         "f_drive_set",
         "f_drive_readback",
-        "f_drive_measured",
         "Q_infer",
         "f0_infer",
         "tau_infer",
-        "x",
-        "y",
-        "r",
-        "phase_deg",
+        "X",
+        "Y",
+        "R",
+        "phase",
         "in_band",
         "iterations",
         "retuned",
@@ -233,7 +232,7 @@ class ResonantDriveSweepProcedure(Procedure):
             measurement = self._measure_once()
             iterations += 1
 
-            in_band = abs(measurement["phase_deg"]) <= self.phase_band
+            in_band = abs(measurement["phase"]) <= self.phase_band
             self._update_last_tau(measurement)
 
             if in_band or not retune or iterations >= self.max_iterations:
@@ -290,14 +289,13 @@ class ResonantDriveSweepProcedure(Procedure):
             "utc": time.time(),
             "drive_readback": float(drive_readback),
             "f_drive_readback": float(f_readback),
-            "f_drive_measured": float(f_meas),
             "Q_infer": float(q_infer),
             "f0_infer": float(f0_infer),
             "tau_infer": float(tau_infer),
-            "x": float(x),
-            "y": float(y),
-            "r": float(np.sqrt(x**2 + y**2)),
-            "phase_deg": float(np.degrees(np.arctan2(y, x))),
+            "X": float(x),
+            "Y": float(y),
+            "R": float(np.sqrt(x**2 + y**2)),
+            "phase": float(np.degrees(np.arctan2(y, x))),
         }
         return data
 
@@ -411,7 +409,7 @@ class ResonantDriveSweepWindow(ManagedDockWindow):
             name="Phase",
             columns=ResonantDriveSweepProcedure.DATA_COLUMNS,
             x_axis="drive_set",
-            y_axis="phase_deg",
+            y_axis="phase",
         )
         q_plot = PlotWidget(
             name="Q",
@@ -425,7 +423,7 @@ class ResonantDriveSweepWindow(ManagedDockWindow):
             inputs=ResonantDriveSweepProcedure.PARAMETERS,
             displays=ResonantDriveSweepProcedure.PARAMETERS,
             x_axis=["drive_readback"],
-            y_axis=["Q_infer", "f0_infer", "phase_deg"],
+            y_axis=["Q_infer", "f0_infer", "phase"],
             widget_list=(drive_plot, phase_plot, q_plot),
             inputs_in_scrollarea=True,
             directory_input=True,
