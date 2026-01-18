@@ -417,6 +417,13 @@ class ResonantDriveSweepWindow(ManagedDockWindow):
             x_axis="drive_set",
             y_axis="Q_infer",
         )
+        nyquist_plot = PlotWidget(
+            name="Nyquist",
+            columns=ResonantDriveSweepProcedure.DATA_COLUMNS,
+            x_axis="X",
+            y_axis="Y",
+        )
+        nyquist_plot.plot.getViewBox().setAspectLocked(True, ratio=1.0)
 
         super().__init__(
             procedure_class=ResonantDriveSweepProcedure,
@@ -424,7 +431,7 @@ class ResonantDriveSweepWindow(ManagedDockWindow):
             displays=ResonantDriveSweepProcedure.PARAMETERS,
             x_axis=["drive_readback"],
             y_axis=["Q_infer", "f0_infer", "phase"],
-            widget_list=(drive_plot, phase_plot, q_plot),
+            widget_list=(drive_plot, phase_plot, q_plot, nyquist_plot),
             inputs_in_scrollarea=True,
             directory_input=True,
         )
