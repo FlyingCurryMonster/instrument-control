@@ -56,6 +56,8 @@ class ResonantDriveSweepProcedure(Procedure):
     fixed_delay_time = FloatParameter("Fixed delay time", units="s", default=0.5)
     delay_mode = Parameter("Delay mode (fixed|max|tau)", default="fixed")
 
+    file_prefix = Parameter("File prefix", default="resonant_drive_sweep")
+
     zur_id = Parameter("Zurich addr.", default="dev4934")
     osc_num = IntegerParameter("Oscillator number", default=2)
     demod_num = IntegerParameter("Demodulator number", default=1)
@@ -81,6 +83,7 @@ class ResonantDriveSweepProcedure(Procedure):
         "initial_frequency",
         "fixed_delay_time",
         "delay_mode",
+        "file_prefix",
         "zur_id",
         "osc_num",
         "demod_num",
@@ -424,13 +427,17 @@ class ResonantDriveSweepWindow(ManagedDockWindow):
             x_axis=["drive_readback"],
             y_axis=["Q_infer", "f0_infer", "phase_deg"],
             widget_list=(drive_plot, phase_plot, q_plot),
+            inputs_in_scrollarea=True,
+            directory_input=True,
         )
         self.setWindowTitle("Zurich Resonant Drive Sweep")
+        self.directory = "data-files"
 
     def queue(self):
         directory = self.directory
-        filename = unique_filename(directory, prefix=f"{self.filename}_")
         procedure = self.make_procedure()
+        prefix = f"{procedure.file_prefix}_" if procedure.file_prefix else ""
+        filename = unique_filename(directory, prefix=prefix)
         results = Results(procedure, filename)
         experiment = self.new_experiment(results)
         self.manager.queue(experiment)
