@@ -240,8 +240,12 @@ class FreeDecayProcedure(Procedure):
         # Basic sanity checks
         if self.iterations <= 0:
             raise ValueError("iterations must be > 0")
+        if self.delay_before_drop <= 0:
+            raise ValueError("delay_before_drop must be > 0")
         if self.measurement_time <= 0:
             raise ValueError("measurement_time must be > 0")
+        if self.ring_up_time <= 0:
+            raise ValueError("ring_up_time must be > 0")
         if self.poll_interval <= 0:
             raise ValueError("poll_interval must be > 0")
         if self.osc_num <= 0 or self.demod_num <= 0:
@@ -251,8 +255,8 @@ class FreeDecayProcedure(Procedure):
                 raise ValueError("initial_voltage must be > 0 when not using current drive.")
             if self.initial_frequency is None or self.initial_frequency <= 0:
                 raise ValueError("initial_frequency must be > 0 when not using current drive.")
-            if self.settle_after_set is None or self.settle_after_set < 0:
-                raise ValueError("settle_after_set must be >= 0 when not using current drive.")
+            if self.settle_after_set is None or self.settle_after_set <= 0:
+                raise ValueError("settle_after_set must be > 0 when not using current drive.")
 
     # --- Zurich helpers -------------------------------------------------
     def _zurich_get_amp(self, osc_num: int) -> float:
