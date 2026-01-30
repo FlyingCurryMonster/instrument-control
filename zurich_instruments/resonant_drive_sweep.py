@@ -1,6 +1,8 @@
+import csv
 import logging
 import sys
 import time
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -43,6 +45,8 @@ class ResonantDriveSweepProcedure(Procedure):
     end_drive = FloatParameter("End drive", units="V", default=10e-3)
     num_points = IntegerParameter("Number of points", default=10)
     logspace = BooleanParameter("Log10 grid", default=False)
+    use_drive_freq_csv = BooleanParameter("Drive settings from csv", default=False)
+    drive_freq_csv_path = Parameter("Drive/freq csv path", default="")
 
     reverse_sweep = BooleanParameter("Reverse sweep", default=True)
     retune_down_sweep = BooleanParameter("Retune to resonance on down sweep", default=False)
@@ -75,6 +79,8 @@ class ResonantDriveSweepProcedure(Procedure):
         "end_drive",
         "num_points",
         "logspace",
+        "use_drive_freq_csv",
+        "drive_freq_csv_path",
         "reverse_sweep",
         "retune_down_sweep",
         "phase_band",
@@ -133,13 +139,19 @@ class ResonantDriveSweepProcedure(Procedure):
         self.restore_freq = self._zurich_get_freq(self.osc_index)
 
         self.delay_mode = self._normalize_delay_mode(self.delay_mode)
-        self.drive_points = self._build_drive_points()
+        if self.use_drive_freq_csv:
+            self.drive_points, self.start_freqs = self._load_drive_freq_csv()
+        else:
+            self.drive_points = self._build_drive_points()
+            self.start_freqs = None
         self.up_sweep_freqs: List[Optional[float]] = [None] * len(self.drive_points)
         self.step_index = 0
         self.last_tau: Optional[float] = None
 
     def execute(self):
-        if self.use_current_frequency:
+        if self.use_drive_freq_csv:
+            current_freq = self._zurich_get_freq(self.osc_index)
+        elif self.use_current_frequency:
             current_freq = self._zurich_get_freq(self.osc_index)
         else:
             current_freq = float(self.initial_frequency)
@@ -150,6 +162,7 @@ class ResonantDriveSweepProcedure(Procedure):
             retune=True,
             use_up_freqs=False,
             current_freq=current_freq,
+            start_freqs=self.start_freqs,
         )
 
         if self.reverse_sweep and not self.should_stop():
@@ -159,6 +172,7 @@ class ResonantDriveSweepProcedure(Procedure):
                 retune=self.retune_down_sweep,
                 use_up_freqs=True,
                 current_freq=current_freq,
+                start_freqs=self.start_freqs,
             )
 
     def shutdown(self):
@@ -177,6 +191,7 @@ class ResonantDriveSweepProcedure(Procedure):
         retune: bool,
         use_up_freqs: bool,
         current_freq: float,
+        start_freqs: Optional[List[float]],
     ) -> float:
         for idx in indices:
             if self.should_stop():
@@ -186,6 +201,8 @@ class ResonantDriveSweepProcedure(Procedure):
             drive = float(self.drive_points[idx])
             if use_up_freqs and self.up_sweep_freqs[idx] is not None:
                 start_freq = float(self.up_sweep_freqs[idx])
+            elif start_freqs is not None:
+                start_freq = float(start_freqs[idx])
             else:
                 start_freq = float(current_freq)
 
@@ -346,25 +363,63 @@ class ResonantDriveSweepProcedure(Procedure):
         return text
 
     def _validate_parameters(self) -> None:
-        if self.num_points <= 0:
-            raise ValueError("Number of points must be >= 1.")
-        if self.start_drive < 0 or self.end_drive < 0:
-            raise ValueError("Drive voltages must be >= 0.")
-        if self.logspace and (self.start_drive <= 0 or self.end_drive <= 0):
-            raise ValueError("Logspace sweep requires positive start/end drive.")
+        if not self.use_drive_freq_csv:
+            if self.num_points <= 0:
+                raise ValueError("Number of points must be >= 1.")
+            if self.start_drive < 0 or self.end_drive < 0:
+                raise ValueError("Drive voltages must be >= 0.")
+            if self.logspace and (self.start_drive <= 0 or self.end_drive <= 0):
+                raise ValueError("Logspace sweep requires positive start/end drive.")
         if self.phase_band < 0:
             raise ValueError("Phase band must be >= 0.")
         if self.max_iterations <= 0:
             raise ValueError("Max retune iterations must be >= 1.")
         if self.fixed_delay_time < 0:
             raise ValueError("Fixed delay time must be >= 0.")
-        if not self.use_current_frequency and self.initial_frequency <= 0:
-            raise ValueError("Initial frequency must be > 0 if not using current frequency.")
+        if not self.use_drive_freq_csv:
+            if not self.use_current_frequency and self.initial_frequency <= 0:
+                raise ValueError(
+                    "Initial frequency must be > 0 if not using current frequency."
+                )
         if self.osc_num <= 0 or self.demod_num <= 0:
             raise ValueError("osc_num and demod_num are 1-based and must be > 0.")
         mode = self._normalize_delay_mode(self.delay_mode)
         if mode not in ("fixed", "max", "tau"):
             raise ValueError("Delay mode must be one of: fixed, max, tau.")
+        if self.use_drive_freq_csv and not str(self.drive_freq_csv_path).strip():
+            raise ValueError("CSV path must be set when drive settings from csv is enabled.")
+
+    def _load_drive_freq_csv(self) -> Tuple[List[float], List[float]]:
+        path = Path(str(self.drive_freq_csv_path)).expanduser()
+        if not path.exists():
+            raise ValueError(f"CSV file not found: {path}")
+        drives: List[float] = []
+        freqs: List[float] = []
+        with path.open("r", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter=",")
+            if reader.fieldnames is None:
+                raise ValueError("CSV must include headers: drive_voltage, drive_frequency.")
+            required = {"drive_voltage", "drive_frequency"}
+            if not required.issubset(set(reader.fieldnames)):
+                raise ValueError(
+                    "CSV headers must include drive_voltage and drive_frequency."
+                )
+            for row in reader:
+                drive_text = row.get("drive_voltage", "")
+                freq_text = row.get("drive_frequency", "")
+                if drive_text is None or freq_text is None:
+                    raise ValueError("CSV rows must include drive_voltage and drive_frequency.")
+                drive = float(str(drive_text).strip())
+                freq = float(str(freq_text).strip())
+                if drive < 0:
+                    raise ValueError("CSV drive_voltage entries must be >= 0.")
+                if freq <= 0:
+                    raise ValueError("CSV drive_frequency entries must be > 0.")
+                drives.append(drive)
+                freqs.append(freq)
+        if not drives:
+            raise ValueError("CSV contains no drive/frequency rows.")
+        return drives, freqs
 
     def _zurich_sample_read(self):
         resp = self.daq.getSample(self.sample_path)
