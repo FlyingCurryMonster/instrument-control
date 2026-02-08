@@ -43,7 +43,9 @@ class FreeDecayProcedure(Procedure):
         "Use current drive amplitude/frequency", default=True
     )
     initial_voltage = FloatParameter("Initial Voltage", units="V")
-    initial_frequency = FloatParameter("Initial Drive Frequency", units="Hz")
+    initial_frequency = FloatParameter(
+        "Initial Drive Frequency", units="Hz", decimals=20
+    )
     settle_after_set = FloatParameter("Wait after setting drive", units="s")
 
     # Readout cadence for getSample loop: 1 Hz = one sample read per second
