@@ -40,3 +40,5 @@ data-files/zurich-PLL-noise/zurich-PID-noise2024-04-27_3.csv
 data-files/zurich-PLL-noise/zurich-PID-noise2024-04-27_4.csv
 data-files/zurich-PLL-noise/zurich-PID-noise2024-04-27_5.csv
 data-files/zurich-PLL-noise/zurich-sr8302024-04-25_9.csv
+**/*.pyc
+**/__pycache__
