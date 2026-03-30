@@ -34,7 +34,7 @@ class zurich_sideband_fsweep(Procedure):
     Q_guess = FloatParameter("Q guess", units="unitless")
     resonance_pt = FloatParameter(
         "Resonance guess (Hz)",
-        decimals=15,
+        decimals=10,
         ui_class=HighPrecisionScientificInput,
     )
     n_pts = IntegerParameter("Number of points", default=21)
