@@ -49,7 +49,7 @@ class zurich_sideband_fsweep(Procedure):
     carrier_drive_amp = FloatParameter("Carrier drive amplitude (V)")
     fixed_sideband_freq = FloatParameter(
         "Fixed sideband demod frequency (Hz)",
-        decimals=15,
+        decimals=10,
         ui_class=HighPrecisionScientificInput,
     )
 
