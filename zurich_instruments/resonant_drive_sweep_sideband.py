@@ -53,34 +53,34 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
         "Sideband phase rotation", units="deg", default=0.0
     )
 
-    start_drive = FloatParameter("Start drive", units="V", default=0.1e-3)
-    end_drive = FloatParameter("End drive", units="V", default=10e-3)
+    start_drive = FloatParameter("Start drive", units="V", default=0.3e-3)
+    end_drive = FloatParameter("End drive", units="V", default=3e-3)
     num_points = IntegerParameter("Number of points", default=10)
-    logspace = BooleanParameter("Log10 grid", default=False)
+    logspace = BooleanParameter("Log10 grid", default=True)
     use_drive_freq_csv = BooleanParameter("Drive settings from csv", default=False)
     drive_freq_csv_path = Parameter("Drive/freq csv path", default="")
 
     reverse_sweep = BooleanParameter("Reverse sweep", default=True)
-    retune_down_sweep = BooleanParameter("Retune to resonance on down sweep", default=False)
+    retune_down_sweep = BooleanParameter("Retune to resonance on down sweep", default=True)
 
-    phase_band = FloatParameter("Phase band", units="deg", default=5.0)
+    phase_band = FloatParameter("Phase band", units="deg", default=6.0)
     max_iterations = IntegerParameter("Max retune iterations", default=5)
 
     use_current_frequency = BooleanParameter("Use current frequency", default=True)
     initial_frequency = FloatParameter("Initial frequency", units="Hz", default=0.0)
 
-    fixed_delay_time = FloatParameter("Fixed delay time", units="s", default=500)
+    fixed_delay_time = FloatParameter("Fixed delay time", units="s", default=1000)
     delay_mode = Parameter("Delay mode (fixed|max|tau)", default="fixed")
 
     file_prefix = Parameter("File prefix", default="resonant_drive_sweep_sideband")
 
     zur_id = Parameter("Zurich addr.", default="dev4934")
-    carrier_osc_num = IntegerParameter("Carrier oscillator number", default=2)
+    carrier_osc_num = IntegerParameter("Carrier oscillator number", default=1)
     carrier_demod_num = IntegerParameter("Carrier demodulator number", default=1)
     sideband_osc_num = IntegerParameter("Sideband oscillator number", default=3)
     sideband_demod_num = IntegerParameter("Sideband demodulator number", default=3)
     fixed_sideband_demod_freq = FloatParameter(
-        "Fixed sideband demod frequency", units="Hz", default=0.0
+        "Fixed sideband demod frequency", units="Hz", default=1320.9381
     )
     server_host = Parameter("Server host", default="192.168.77.26")
     server_port = IntegerParameter("Server port", default=8004)
