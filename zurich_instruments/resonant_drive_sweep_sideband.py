@@ -44,14 +44,15 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
     sideband_V0 = FloatParameter(
         "Sideband drive that k was obtained at", units="V", default=267.6e-6
     )
-    xbkg = FloatParameter("X background", units="V", default=-7.897e-05)
-    ybkg = FloatParameter("Y background", units="V", default=-5.93456e-05)
+    carrier_xbkg = FloatParameter("Carrier X background before rotation", units="V", default=-2.968e-3)
+    carrier_ybkg = FloatParameter("Carrier Y background before rotation", units="V", default=1.8547e-3)
+    sideband_xbkg = FloatParameter("Sideband X background before rotation", units="V", default=27.189e-6)
+    sideband_ybkg = FloatParameter("Sideband Y background before rotation", units="V", default=-12.67e-6
+                                   )
     carrier_phase_rotation = FloatParameter(
-        "Carrier phase rotation", units="deg", default=0.0
-    )
+        "Carrier phase rotation", units="deg", default=-112.87)
     sideband_phase_rotation = FloatParameter(
-        "Sideband phase rotation", units="deg", default=0.0
-    )
+        "Sideband phase rotation", units="deg", default=-98.367)
 
     start_drive = FloatParameter("Start drive", units="V", default=0.3e-3)
     end_drive = FloatParameter("End drive", units="V", default=3e-3)
@@ -92,8 +93,10 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
         "carrier_V0",
         "sideband_k",
         "sideband_V0",
-        "xbkg",
-        "ybkg",
+        "carrier_xbkg",
+        "carrier_ybkg",
+        "sideband_xbkg",
+        "sideband_ybkg",
         "carrier_phase_rotation",
         "sideband_phase_rotation",
         "start_drive",
@@ -330,11 +333,15 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
         carrier_x, carrier_y = self._subtract_background_and_rotate(
             carrier_x_raw,
             carrier_y_raw,
+            self.carrier_xbkg,
+            self.carrier_ybkg,
             self.carrier_phase_rotation,
         )
         sideband_x, sideband_y = self._subtract_background_and_rotate(
             sideband_x_raw,
             sideband_y_raw,
+            self.sideband_xbkg,
+            self.sideband_ybkg,
             self.sideband_phase_rotation,
         )
 
@@ -547,10 +554,15 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
         return self.daq.getDouble(osc_path)
 
     def _subtract_background_and_rotate(
-        self, x_raw: float, y_raw: float, phase_rotation_deg: float
+        self,
+        x_raw: float,
+        y_raw: float,
+        x_bkg: float,
+        y_bkg: float,
+        phase_rotation_deg: float,
     ) -> Tuple[float, float]:
-        x = float(x_raw) - float(self.xbkg)
-        y = float(y_raw) - float(self.ybkg)
+        x = float(x_raw) - float(x_bkg)
+        y = float(y_raw) - float(y_bkg)
         theta = np.radians(float(phase_rotation_deg))
         cos_theta = np.cos(theta)
         sin_theta = np.sin(theta)
