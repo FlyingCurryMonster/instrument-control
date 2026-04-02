@@ -99,7 +99,7 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
     fixed_sideband_demod_freq = FloatParameter(
         "Fixed sideband demod frequency",
         units="Hz",
-        default=1320.937981,
+        default=1.32093647e3,
         decimals=10,
         ui_class=HighPrecisionScientificInput,
     )
