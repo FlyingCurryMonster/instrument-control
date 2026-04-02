@@ -64,7 +64,7 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
     sideband_phase_rotation = FloatParameter(
         "Sideband phase rotation", units="deg", default=-98.367)
 
-    start_drive = FloatParameter("Start drive", units="V", default=0.3e-3)
+    start_drive = FloatParameter("Start drive", units="V", default=0.1e-3)
     end_drive = FloatParameter("End drive", units="V", default=3e-3)
     num_points = IntegerParameter("Number of points", default=10)
     logspace = BooleanParameter("Log10 grid", default=True)
@@ -109,6 +109,7 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
     comments = Parameter("Comments/Notes", default="")
 
     PARAMETERS = [
+        "fixed_sideband_demod_freq",
         "carrier_k",
         "carrier_V0",
         "sideband_k",
@@ -139,7 +140,6 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
         "carrier_demod_num",
         "sideband_osc_num",
         "sideband_demod_num",
-        "fixed_sideband_demod_freq",
         "server_host",
         "server_port",
         "interface",
