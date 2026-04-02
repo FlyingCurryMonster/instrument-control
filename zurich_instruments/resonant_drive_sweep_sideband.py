@@ -46,7 +46,7 @@ def calculate_f0_infer(x: float, y: float, f_drive: float, k: float) -> float:
 class ResonantDriveSweepSidebandProcedure(Procedure):
     """Sweep carrier drive amplitude while retuning on demod 1 and logging a sideband pickup."""
 
-    carrier_k = FloatParameter("Carrier k constant", units="1/V", default=93931072.9988525705)
+    carrier_k = FloatParameter("Carrier k constant", units="1/V", default=3931072.9988525705)
     carrier_V0 = FloatParameter(
         "Carrier drive that k was obtained at", units="V", default=300e-6
     )
