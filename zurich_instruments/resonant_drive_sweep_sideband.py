@@ -54,8 +54,8 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
     sideband_V0 = FloatParameter(
         "Sideband drive that k was obtained at", units="V", default=267.6e-6
     )
-    carrier_xbkg = FloatParameter("Carrier X background before rotation", units="V", default=-2.968e-3)
-    carrier_ybkg = FloatParameter("Carrier Y background before rotation", units="V", default=1.8547e-3)
+    carrier_xbkg = FloatParameter("Carrier X background before rotation", units="V", default=-2.16e-3)
+    carrier_ybkg = FloatParameter("Carrier Y background before rotation", units="V", default=0.7886e-3)
     sideband_xbkg = FloatParameter("Sideband X background before rotation", units="V", default=27.189e-6)
     sideband_ybkg = FloatParameter("Sideband Y background before rotation", units="V", default=-12.67e-6
                                    )
