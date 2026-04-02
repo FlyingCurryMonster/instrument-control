@@ -1,5 +1,6 @@
 import csv
 import logging
+import re
 import sys
 import time
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import zhinst.core
+from pymeasure.display.inputs import ScientificInput
 from pymeasure.display.Qt import QtWidgets
 from pymeasure.display.widgets import PlotWidget
 from pymeasure.display.windows.managed_dock_window import ManagedDockWindow
@@ -24,6 +26,14 @@ log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
 
+class HighPrecisionScientificInput(ScientificInput):
+    def textFromValue(self, value):
+        precision = max(1, getattr(self._parameter, "decimals", 15))
+        string = f"{value:.{precision}g}".replace("e+", "e")
+        string = re.sub(r"e(-?)0*(\d+)", r"e\1\2", string)
+        return string
+
+
 def calculate_Q_infer(x: float, y: float, k: float) -> float:
     return k * (x**2 + y**2) / x
 
@@ -36,9 +46,9 @@ def calculate_f0_infer(x: float, y: float, f_drive: float, k: float) -> float:
 class ResonantDriveSweepSidebandProcedure(Procedure):
     """Sweep carrier drive amplitude while retuning on demod 1 and logging a sideband pickup."""
 
-    carrier_k = FloatParameter("Carrier k constant", units="1/V", default=93260373.7208108)
+    carrier_k = FloatParameter("Carrier k constant", units="1/V", default=93931072.9988525705)
     carrier_V0 = FloatParameter(
-        "Carrier drive that k was obtained at", units="V", default=267.6e-6
+        "Carrier drive that k was obtained at", units="V", default=300e-6
     )
     sideband_k = FloatParameter("Sideband k constant", units="1/V", default=93260373.7208108)
     sideband_V0 = FloatParameter(
@@ -68,7 +78,13 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
     max_iterations = IntegerParameter("Max retune iterations", default=5)
 
     use_current_frequency = BooleanParameter("Use current frequency", default=True)
-    initial_frequency = FloatParameter("Initial frequency", units="Hz", default=0.0)
+    initial_frequency = FloatParameter(
+        "Initial frequency",
+        units="Hz",
+        default=0.0,
+        decimals=10,
+        ui_class=HighPrecisionScientificInput,
+    )
 
     fixed_delay_time = FloatParameter("Fixed delay time", units="s", default=1000)
     delay_mode = Parameter("Delay mode (fixed|max|tau)", default="fixed")
@@ -81,7 +97,11 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
     sideband_osc_num = IntegerParameter("Sideband oscillator number", default=3)
     sideband_demod_num = IntegerParameter("Sideband demodulator number", default=3)
     fixed_sideband_demod_freq = FloatParameter(
-        "Fixed sideband demod frequency", units="Hz", default=1320.9381
+        "Fixed sideband demod frequency",
+        units="Hz",
+        default=1320.9381,
+        decimals=10,
+        ui_class=HighPrecisionScientificInput,
     )
     server_host = Parameter("Server host", default="192.168.77.26")
     server_port = IntegerParameter("Server port", default=8004)
