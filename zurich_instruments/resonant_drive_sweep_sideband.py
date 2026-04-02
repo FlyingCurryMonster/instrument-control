@@ -36,8 +36,14 @@ def calculate_f0_infer(x: float, y: float, f_drive: float, k: float) -> float:
 class ResonantDriveSweepSidebandProcedure(Procedure):
     """Sweep carrier drive amplitude while retuning on demod 1 and logging a sideband pickup."""
 
-    k = FloatParameter("k constant", units="1/V", default=93260373.7208108)
-    V0 = FloatParameter("Drive that k was obtained at", units="V", default=267.6e-6)
+    carrier_k = FloatParameter("Carrier k constant", units="1/V", default=93260373.7208108)
+    carrier_V0 = FloatParameter(
+        "Carrier drive that k was obtained at", units="V", default=267.6e-6
+    )
+    sideband_k = FloatParameter("Sideband k constant", units="1/V", default=93260373.7208108)
+    sideband_V0 = FloatParameter(
+        "Sideband drive that k was obtained at", units="V", default=267.6e-6
+    )
     xbkg = FloatParameter("X background", units="V", default=-7.897e-05)
     ybkg = FloatParameter("Y background", units="V", default=-5.93456e-05)
     carrier_phase_rotation = FloatParameter(
@@ -82,8 +88,10 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
     comments = Parameter("Comments/Notes", default="")
 
     PARAMETERS = [
-        "k",
-        "V0",
+        "carrier_k",
+        "carrier_V0",
+        "sideband_k",
+        "sideband_V0",
         "xbkg",
         "ybkg",
         "carrier_phase_rotation",
@@ -120,21 +128,25 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
         "drive_index",
         "sweep_direction",
         "utc",
-        "drive_set",
-        "drive_readback",
-        "f_drive_set",
-        "f_drive_readback",
+        "carrier_drive_set",
+        "carrier_drive_readback",
+        "sideband_drive_readback",
+        "f_carrier_set",
+        "f_carrier_readback",
         "f_sideband_osc_set",
         "f_sideband_osc_readback",
         "f_sideband_target",
         "f_sideband_sum_readback",
-        "Q_infer",
-        "f0_infer",
-        "tau_infer",
-        "X",
-        "Y",
-        "R",
-        "phase",
+        "carrier_Q_infer",
+        "carrier_f0_infer",
+        "carrier_tau_infer",
+        "sideband_Q_infer",
+        "sideband_f0_infer",
+        "sideband_tau_infer",
+        "carrier_X",
+        "carrier_Y",
+        "carrier_R",
+        "carrier_phase",
         "carrier_demod_freq",
         "sideband_demod_freq",
         "sideband_X",
@@ -278,7 +290,7 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
             measurement = self._measure_once()
             iterations += 1
 
-            in_band = abs(measurement["phase"]) <= self.phase_band
+            in_band = abs(measurement["carrier_phase"]) <= self.phase_band
             self._update_last_tau(measurement)
 
             measurement.update(
@@ -286,8 +298,8 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
                     "step_index": int(self.step_index),
                     "drive_index": int(drive_index),
                     "sweep_direction": int(sweep_direction),
-                    "drive_set": float(drive),
-                    "f_drive_set": float(current_freq),
+                    "carrier_drive_set": float(drive),
+                    "f_carrier_set": float(current_freq),
                     "in_band": int(in_band),
                     "iterations": int(iterations),
                     "retuned": int(retuned),
@@ -300,7 +312,7 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
             if in_band or not retune or iterations >= self.max_iterations:
                 return current_freq, True
 
-            f0_infer = measurement["f0_infer"]
+            f0_infer = measurement["carrier_f0_infer"]
             if not np.isfinite(f0_infer):
                 return current_freq, True
 
@@ -327,15 +339,19 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
         )
 
         drive_readback = self._zurich_get_carrier_amp()
+        sideband_drive_readback = self._zurich_get_sideband_amp()
         carrier_freq_readback = self._zurich_get_freq(self.carrier_osc_index)
         sideband_freq_readback = self._zurich_get_freq(self.sideband_osc_index)
 
         q_infer = np.nan
         f0_infer = np.nan
         tau_infer = np.nan
+        sideband_q_infer = np.nan
+        sideband_f0_infer = np.nan
+        sideband_tau_infer = np.nan
 
         if drive_readback > 0 and carrier_x != 0:
-            k_effective = self.k * self.V0 / drive_readback
+            k_effective = self.carrier_k * self.carrier_V0 / drive_readback
             q_infer = calculate_Q_infer(carrier_x, carrier_y, k_effective)
             if np.isfinite(q_infer) and q_infer != 0:
                 f0_infer = calculate_f0_infer(
@@ -344,6 +360,23 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
                 if np.isfinite(f0_infer) and f0_infer != 0:
                     tau_infer = q_infer / (np.pi * f0_infer)
 
+        if sideband_drive_readback > 0 and sideband_x != 0:
+            sideband_k_effective = (
+                self.sideband_k * self.sideband_V0 / sideband_drive_readback
+            )
+            sideband_q_infer = calculate_Q_infer(
+                sideband_x, sideband_y, sideband_k_effective
+            )
+            if np.isfinite(sideband_q_infer) and sideband_q_infer != 0:
+                sideband_f0_infer = calculate_f0_infer(
+                    sideband_x,
+                    sideband_y,
+                    sideband_demod_freq,
+                    sideband_k_effective,
+                )
+                if np.isfinite(sideband_f0_infer) and sideband_f0_infer != 0:
+                    sideband_tau_infer = sideband_q_infer / (np.pi * sideband_f0_infer)
+
         carrier_r = np.hypot(carrier_x, carrier_y)
         carrier_phase = np.degrees(np.arctan2(carrier_y, carrier_x))
         sideband_r = np.hypot(sideband_x, sideband_y)
@@ -351,21 +384,25 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
 
         return {
             "utc": time.time(),
-            "drive_readback": float(drive_readback),
-            "f_drive_readback": float(carrier_freq_readback),
+            "carrier_drive_readback": float(drive_readback),
+            "sideband_drive_readback": float(sideband_drive_readback),
+            "f_carrier_readback": float(carrier_freq_readback),
             "f_sideband_osc_set": float(
                 self._sideband_freq_for_carrier(carrier_freq_readback)
             ),
             "f_sideband_osc_readback": float(sideband_freq_readback),
             "f_sideband_target": float(self.fixed_sideband_demod_freq),
             "f_sideband_sum_readback": float(carrier_freq_readback + sideband_freq_readback),
-            "Q_infer": float(q_infer),
-            "f0_infer": float(f0_infer),
-            "tau_infer": float(tau_infer),
-            "X": float(carrier_x),
-            "Y": float(carrier_y),
-            "R": float(carrier_r),
-            "phase": float(carrier_phase),
+            "carrier_Q_infer": float(q_infer),
+            "carrier_f0_infer": float(f0_infer),
+            "carrier_tau_infer": float(tau_infer),
+            "sideband_Q_infer": float(sideband_q_infer),
+            "sideband_f0_infer": float(sideband_f0_infer),
+            "sideband_tau_infer": float(sideband_tau_infer),
+            "carrier_X": float(carrier_x),
+            "carrier_Y": float(carrier_y),
+            "carrier_R": float(carrier_r),
+            "carrier_phase": float(carrier_phase),
             "carrier_demod_freq": float(carrier_demod_freq),
             "sideband_demod_freq": float(sideband_demod_freq),
             "sideband_X": float(sideband_x),
@@ -375,9 +412,7 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
         }
 
     def _update_last_tau(self, measurement: dict) -> None:
-        tau = measurement.get("tau_infer")
-        if tau is None:
-            return
+        tau = measurement.get("carrier_tau_infer")
         if np.isfinite(tau) and tau > 0:
             self.last_tau = float(tau)
 
@@ -503,6 +538,10 @@ class ResonantDriveSweepSidebandProcedure(Procedure):
         amp_path = f"/{self.zur_id}/mods/0/carrier/amplitude"
         return self.daq.getDouble(amp_path)
 
+    def _zurich_get_sideband_amp(self) -> float:
+        amp_path = f"/{self.zur_id}/mods/0/sidebands/1/amplitude"
+        return self.daq.getDouble(amp_path)
+
     def _zurich_get_freq(self, osc_num: int) -> float:
         osc_path = f"/{self.zur_id}/oscs/{osc_num}/freq"
         return self.daq.getDouble(osc_path)
@@ -554,32 +593,32 @@ class ResonantDriveSweepSidebandWindow(ManagedDockWindow):
         drive_plot = PlotWidget(
             name="Drive Sweep",
             columns=ResonantDriveSweepSidebandProcedure.DATA_COLUMNS,
-            x_axis="drive_set",
-            y_axis="f0_infer",
+            x_axis="carrier_drive_set",
+            y_axis="carrier_f0_infer",
         )
         phase_plot = PlotWidget(
             name="Carrier Phase",
             columns=ResonantDriveSweepSidebandProcedure.DATA_COLUMNS,
-            x_axis="drive_set",
-            y_axis="phase",
+            x_axis="carrier_drive_set",
+            y_axis="carrier_phase",
         )
         q_plot = PlotWidget(
             name="Q",
             columns=ResonantDriveSweepSidebandProcedure.DATA_COLUMNS,
-            x_axis="drive_set",
-            y_axis="Q_infer",
+            x_axis="carrier_drive_set",
+            y_axis="carrier_Q_infer",
         )
         carrier_nyquist_plot = PlotWidget(
             name="Carrier Nyquist",
             columns=ResonantDriveSweepSidebandProcedure.DATA_COLUMNS,
-            x_axis="X",
-            y_axis="Y",
+            x_axis="carrier_X",
+            y_axis="carrier_Y",
         )
         carrier_nyquist_plot.plot.getViewBox().setAspectLocked(True, ratio=1.0)
         sideband_plot = PlotWidget(
             name="Sideband Response",
             columns=ResonantDriveSweepSidebandProcedure.DATA_COLUMNS,
-            x_axis="drive_set",
+            x_axis="carrier_drive_set",
             y_axis="sideband_R",
         )
         sideband_nyquist_plot = PlotWidget(
@@ -594,8 +633,8 @@ class ResonantDriveSweepSidebandWindow(ManagedDockWindow):
             procedure_class=ResonantDriveSweepSidebandProcedure,
             inputs=ResonantDriveSweepSidebandProcedure.PARAMETERS,
             displays=ResonantDriveSweepSidebandProcedure.PARAMETERS,
-            x_axis=["drive_readback"],
-            y_axis=["Q_infer", "f0_infer", "phase", "sideband_R"],
+            x_axis=["carrier_drive_readback"],
+            y_axis=["carrier_Q_infer", "carrier_f0_infer", "carrier_phase", "sideband_R"],
             widget_list=(
                 drive_plot,
                 phase_plot,
