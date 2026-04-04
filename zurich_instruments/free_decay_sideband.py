@@ -671,6 +671,7 @@ class FreeDecaySidebandWindow(ManagedDockWindow):
             x_axis=["t_rel"],
             y_axis=["carrier_X", "carrier_R", "carrier_phase", "sideband_R"],
             widget_list=(carrier_plot, sideband_plot, phase_plot),
+            inputs_in_scrollarea=True,
         )
 
         self.setWindowTitle("Zurich Sideband Free Decay")
