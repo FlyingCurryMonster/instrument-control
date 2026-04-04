@@ -108,7 +108,7 @@ class FreeDecaySidebandProcedure(Procedure):
     sideband_phase_rotation = FloatParameter("Sideband phase rotation", units="deg", default=-98.367)
 
     zur_id = Parameter("Zurich addr.", default="dev4934")
-    carrier_osc_num = IntegerParameter("Carrier oscillator number", default=2)
+    carrier_osc_num = IntegerParameter("Carrier oscillator number", default=1)
     carrier_demod_num = IntegerParameter("Carrier demodulator number", default=1)
     sideband_demod_num = IntegerParameter("Sideband demodulator number", default=3)
     sideband_osc_num = IntegerParameter("Sideband oscillator number", default=3)
