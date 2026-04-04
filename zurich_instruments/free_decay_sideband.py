@@ -50,6 +50,9 @@ class FreeDecaySidebandProcedure(Procedure):
     measurement_time = FloatParameter("Measurement time", units="s", default=300)
     ring_up_time = FloatParameter("Ring-up time", units="s", default=300)
     poll_interval = FloatParameter("Poll interval", units="s", default=1.0)
+    carrier_drive_final = FloatParameter(
+        "Carrier drive final", units="V", default=0.0
+    )
 
     use_current_sideband_drive = BooleanParameter(
         "Use current sideband amplitude/frequency", default=True
@@ -107,6 +110,7 @@ class FreeDecaySidebandProcedure(Procedure):
         "measurement_time",
         "ring_up_time",
         "poll_interval",
+        "carrier_drive_final",
         "use_current_sideband_drive",
         "initial_sideband_voltage",
         "initial_sideband_frequency",
@@ -138,7 +142,8 @@ class FreeDecaySidebandProcedure(Procedure):
         "iteration",
         "t_rel",
         "utc",
-        "carrier_drive_before_drop",
+        "carrier_drive_initial",
+        "carrier_drive_final",
         "sideband_drive_before_drop",
         "sideband_freq_before_drop",
         "carrier_timeconstant",
@@ -197,6 +202,8 @@ class FreeDecaySidebandProcedure(Procedure):
         if self.use_current_sideband_drive:
             self.target_sideband_amp = self.restore_sideband_amp
             self.target_sideband_freq = self.restore_sideband_freq
+            self.initial_sideband_voltage = self.target_sideband_amp
+            self.initial_sideband_frequency = self.target_sideband_freq
         else:
             self.target_sideband_amp = float(self.initial_sideband_voltage)
             self.target_sideband_freq = float(self.initial_sideband_frequency)
@@ -208,6 +215,8 @@ class FreeDecaySidebandProcedure(Procedure):
         if self.use_current_time_constants:
             self.active_carrier_tc = self.restore_carrier_tc
             self.active_sideband_tc = self.restore_sideband_tc
+            self.carrier_timeconstant = self.active_carrier_tc
+            self.sideband_timeconstant = self.active_sideband_tc
         else:
             self.active_carrier_tc = float(self.carrier_timeconstant)
             self.active_sideband_tc = float(self.sideband_timeconstant)
@@ -236,7 +245,7 @@ class FreeDecaySidebandProcedure(Procedure):
             pre_drop_sideband_amp = self._zurich_get_sideband_amp()
             pre_drop_sideband_freq = self._zurich_get_freq(self.sideband_osc_index)
 
-            self._set_carrier_amp(0.0)
+            self._set_carrier_amp(self.carrier_drive_final)
             drop_time_utc = time.time()
 
             drop_device_ts = None
@@ -253,7 +262,8 @@ class FreeDecaySidebandProcedure(Procedure):
                 iteration=iteration,
                 drop_time_utc=drop_time_utc,
                 drop_device_ts=drop_device_ts,
-                carrier_drive_before_drop=pre_drop_carrier_amp,
+                carrier_drive_initial=pre_drop_carrier_amp,
+                carrier_drive_final=self.carrier_drive_final,
                 sideband_drive_before_drop=pre_drop_sideband_amp,
                 sideband_freq_before_drop=pre_drop_sideband_freq,
             )
@@ -291,6 +301,7 @@ class FreeDecaySidebandProcedure(Procedure):
             "measurement_time",
             "ring_up_time",
             "poll_interval",
+            "carrier_drive_final",
             "use_current_sideband_drive",
             "use_current_time_constants",
             "settle_after_set",
@@ -332,6 +343,8 @@ class FreeDecaySidebandProcedure(Procedure):
             raise ValueError("ring_up_time must be >= 0")
         if self.poll_interval <= 0:
             raise ValueError("poll_interval must be > 0")
+        if self.carrier_drive_final < 0:
+            raise ValueError("carrier_drive_final must be >= 0")
         if self.settle_after_set < 0:
             raise ValueError("settle_after_set must be >= 0")
         if min(self.carrier_demod_num, self.sideband_demod_num, self.sideband_osc_num) <= 0:
@@ -414,7 +427,8 @@ class FreeDecaySidebandProcedure(Procedure):
         iteration: int,
         drop_time_utc: float,
         drop_device_ts: Optional[float],
-        carrier_drive_before_drop: float,
+        carrier_drive_initial: float,
+        carrier_drive_final: float,
         sideband_drive_before_drop: float,
         sideband_freq_before_drop: float,
     ):
@@ -433,7 +447,8 @@ class FreeDecaySidebandProcedure(Procedure):
                     iteration=iteration,
                     drop_time_utc=drop_time_utc,
                     drop_device_ts=drop_device_ts,
-                    carrier_drive_before_drop=carrier_drive_before_drop,
+                    carrier_drive_initial=carrier_drive_initial,
+                    carrier_drive_final=carrier_drive_final,
                     sideband_drive_before_drop=sideband_drive_before_drop,
                     sideband_freq_before_drop=sideband_freq_before_drop,
                 )
@@ -450,7 +465,8 @@ class FreeDecaySidebandProcedure(Procedure):
         iteration: int,
         drop_time_utc: float,
         drop_device_ts: Optional[float],
-        carrier_drive_before_drop: float,
+        carrier_drive_initial: float,
+        carrier_drive_final: float,
         sideband_drive_before_drop: float,
         sideband_freq_before_drop: float,
     ):
@@ -522,7 +538,7 @@ class FreeDecaySidebandProcedure(Procedure):
                 x=carrier_x,
                 y=carrier_y,
                 demod_freq=carrier_demod_freq,
-                drive_before_drop=carrier_drive_before_drop,
+                drive_before_drop=carrier_drive_initial,
                 k_constant=self.carrier_k,
                 v0=self.carrier_V0,
             )
@@ -546,7 +562,8 @@ class FreeDecaySidebandProcedure(Procedure):
                 "iteration": int(iteration),
                 "t_rel": t_rel,
                 "utc": float(utc),
-                "carrier_drive_before_drop": float(carrier_drive_before_drop),
+                "carrier_drive_initial": float(carrier_drive_initial),
+                "carrier_drive_final": float(carrier_drive_final),
                 "sideband_drive_before_drop": float(sideband_drive_before_drop),
                 "sideband_freq_before_drop": float(sideband_freq_before_drop),
                 "carrier_timeconstant": float(self.active_carrier_tc),
