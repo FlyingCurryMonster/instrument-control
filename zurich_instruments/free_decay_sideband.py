@@ -651,7 +651,7 @@ class FreeDecaySidebandProcedure(Procedure):
                 x=carrier_x,
                 y=carrier_y,
                 demod_freq=carrier_demod_freq,
-                drive_before_drop=carrier_drive__emit_from_pollinitial,
+                drive_before_drop=carrier_drive_initial,
                 k_constant=self.carrier_k,
                 v0=self.carrier_V0,
             )
