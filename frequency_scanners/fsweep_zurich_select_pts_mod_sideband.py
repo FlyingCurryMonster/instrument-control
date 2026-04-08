@@ -56,7 +56,7 @@ class SidebandFrequencySweepProcedure(Procedure):
     carrier_frequency = FloatParameter(
         "Carrier frequency",
         units="Hz",
-        default=1319.93647,
+        default=645.7,
         decimals=10,
         ui_class=HighPrecisionScientificInput,
     )
@@ -71,6 +71,7 @@ class SidebandFrequencySweepProcedure(Procedure):
     )
     num_points = IntegerParameter("Number of points", default=21)
     reverse = BooleanParameter("Reverse sweep", default=False)
+    initial_delay = FloatParameter("Initial delay (s)", units="s", default=1000.0)
     delay = FloatParameter("Delay (s)", units="s", default=500.0)
     file_prefix = Parameter("File prefix", default="sideband_frequency_sweep")
 
@@ -98,6 +99,7 @@ class SidebandFrequencySweepProcedure(Procedure):
         "resonance_pt",
         "num_points",
         "reverse",
+        "initial_delay",
         "delay",
         "file_prefix",
         "zur_id",
@@ -179,6 +181,8 @@ class SidebandFrequencySweepProcedure(Procedure):
         self.step_index = 0
 
         self._apply_step(self.sideband_freq_points[0])
+        if not self._sleep_with_abort(float(self.initial_delay)):
+            raise RuntimeError("Aborted during initial delay.")
 
     def execute(self):
         for i, sideband_freq in enumerate(self.sideband_freq_points):
@@ -236,6 +240,8 @@ class SidebandFrequencySweepProcedure(Procedure):
             )
         if self.delay < 0:
             raise ValueError("Delay must be >= 0.")
+        if self.initial_delay < 0:
+            raise ValueError("Initial delay must be >= 0.")
         if min(
             self.carrier_osc_num,
             self.carrier_demod_num,
