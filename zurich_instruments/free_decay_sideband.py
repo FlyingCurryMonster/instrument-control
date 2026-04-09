@@ -364,14 +364,7 @@ class FreeDecaySidebandProcedure(Procedure):
 
         self._apply_initial_state()
 
-        changed_anything = (
-            (not self.use_current_carrier_drive)
-            or (not self.use_current_sideband1_drive)
-            or (not self.use_current_sideband2_drive)
-            or (not self.use_current_time_constants)
-            or (not self.use_current_sample_rates)
-        )
-        self.pre_drop_wait = self.settle_after_set if changed_anything else self.delay_before_drop
+        self.pre_drop_wait = float(self.delay_before_drop)
 
     def execute(self):
         for iteration in range(self.iterations):
