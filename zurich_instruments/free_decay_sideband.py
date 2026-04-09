@@ -105,6 +105,13 @@ class FreeDecaySidebandProcedure(Procedure):
 
     settle_after_set = FloatParameter("Wait after setting values", units="s", default=0.2)
 
+    carrier_xbkg = FloatParameter(
+        "Carrier X background before rotation", units="V", default=-2.16e-3
+    )
+    carrier_ybkg = FloatParameter(
+        "Carrier Y background before rotation", units="V", default=0.7886e-3
+    )
+
     sideband1_k = FloatParameter("Sideband 1 k constant", units="1/V", default=3931072.9988525705)
     sideband1_V0 = FloatParameter(
         "Sideband 1 drive that k was obtained at", units="V", default=300e-6
@@ -171,6 +178,8 @@ class FreeDecaySidebandProcedure(Procedure):
         "use_current_sample_rates",
         "demod_sample_rate",
         "settle_after_set",
+        "carrier_xbkg",
+        "carrier_ybkg",
         "sideband1_k",
         "sideband1_V0",
         "sideband2_k",
@@ -980,10 +989,10 @@ class FreeDecaySidebandWindow(ManagedDockWindow):
 
     @staticmethod
     def _default_data_dir() -> Path:
-        preferred = Path(r"D:/Data/Fall25-Summer26/free-decay-sideband")
+        preferred = Path(r"D:/Data/Fall25-Summer26/free-decay")
         if preferred.exists():
             return preferred
-        fallback = Path(__file__).resolve().parent.parent / "data-files/free-decay-sideband"
+        fallback = Path(__file__).resolve().parent.parent / "data-files/free-decay"
         return fallback if fallback.exists() else Path.cwd()
 
 
