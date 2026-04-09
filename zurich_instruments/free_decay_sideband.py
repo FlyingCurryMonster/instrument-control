@@ -119,7 +119,7 @@ class FreeDecaySidebandProcedure(Procedure):
 
     sideband2_k = FloatParameter("Sideband 2 k constant", units="1/V", default=93260373.7208108)
     sideband2_V0 = FloatParameter(
-        "Sideband 2 drive that k was obtained at", units="V", default=370.9e-6
+        "Sideband 2 drive that k was obtained at", units="V", default=267.6e-6
     )
 
     sideband1_xbkg = FloatParameter(
