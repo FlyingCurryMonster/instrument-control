@@ -216,6 +216,8 @@ class FreeDecaySidebandProcedure(Procedure):
         "sideband2_drive_before_drop",
         "sideband2_drive_after_drop",
         "sideband2_freq_before_drop",
+        "f_demod_sideband1_diff",
+        "f_demod_sideband2_sum",
         "carrier_timeconstant",
         "sideband1_timeconstant",
         "sideband2_timeconstant",
@@ -691,6 +693,12 @@ class FreeDecaySidebandProcedure(Procedure):
             return
 
         for idx in range(n):
+            f_demod_sideband1_diff = float(
+                carrier_freq_before_drop - sideband1_freq_before_drop
+            )
+            f_demod_sideband2_sum = float(
+                carrier_freq_before_drop + sideband2_freq_before_drop
+            )
             carrier_x, carrier_y = self._subtract_background_and_rotate(
                 carrier_xs[idx],
                 carrier_ys[idx],
@@ -720,7 +728,7 @@ class FreeDecaySidebandProcedure(Procedure):
             sideband1_q, sideband1_f0, sideband1_tau = self._infer_metrics(
                 sideband1_x,
                 sideband1_y,
-                sideband1_demod_freq,
+                f_demod_sideband1_diff,
                 sideband1_drive_before_drop,
                 self.sideband1_k,
                 self.sideband1_V0,
@@ -728,7 +736,7 @@ class FreeDecaySidebandProcedure(Procedure):
             sideband2_q, sideband2_f0, sideband2_tau = self._infer_metrics(
                 sideband2_x,
                 sideband2_y,
-                sideband2_demod_freq,
+                f_demod_sideband2_sum,
                 sideband2_drive_before_drop,
                 self.sideband2_k,
                 self.sideband2_V0,
@@ -750,6 +758,8 @@ class FreeDecaySidebandProcedure(Procedure):
                 "sideband2_drive_before_drop": float(sideband2_drive_before_drop),
                 "sideband2_drive_after_drop": float(sideband2_drive_after_drop),
                 "sideband2_freq_before_drop": float(sideband2_freq_before_drop),
+                "f_demod_sideband1_diff": f_demod_sideband1_diff,
+                "f_demod_sideband2_sum": f_demod_sideband2_sum,
                 "carrier_timeconstant": float(self.active_carrier_tc),
                 "sideband1_timeconstant": float(self.active_sideband1_tc),
                 "sideband2_timeconstant": float(self.active_sideband2_tc),
