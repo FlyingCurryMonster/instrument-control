@@ -74,8 +74,8 @@ class DualSidebandFrequencySweepProcedure(Procedure):
         decimals=10,
         ui_class=HighPrecisionScientificInput,
     )
-    sideband1_drive = FloatParameter("Sideband 1 drive", units="V", default=267.6e-6)
-    sideband2_drive = FloatParameter("Sideband 2 drive", units="V", default=370.9e-6)
+    sideband1_drive = FloatParameter("Sideband 1 drive", units="V", default=3e-3)
+    sideband2_drive = FloatParameter("Sideband 2 drive", units="V", default=1.71e-3)
     fixed_sideband1_diff_target = FloatParameter(
         "Fixed target for fc-fm1",
         units="Hz",
