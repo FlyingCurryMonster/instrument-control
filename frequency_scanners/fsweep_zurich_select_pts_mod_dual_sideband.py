@@ -60,17 +60,17 @@ class DualSidebandFrequencySweepProcedure(Procedure):
         "Carrier phase rotation", units="deg", default=-112.87
     )
     sideband1_phase_rotation = FloatParameter(
-        "Sideband 1 phase rotation", units="deg", default=-98.367
+        "Sideband 1 phase rotation", units="deg", default=-95.3
     )
     sideband2_phase_rotation = FloatParameter(
         "Sideband 2 phase rotation", units="deg", default=-98.367
     )
 
-    carrier_drive = FloatParameter("Carrier drive", units="V", default=300e-6)
+    carrier_drive = FloatParameter("Carrier drive", units="V", default=0)
     initial_carrier_frequency = FloatParameter(
         "Initial carrier frequency",
         units="Hz",
-        default=645.7,
+        default=800,
         decimals=10,
         ui_class=HighPrecisionScientificInput,
     )
@@ -79,7 +79,7 @@ class DualSidebandFrequencySweepProcedure(Procedure):
     fixed_sideband1_diff_target = FloatParameter(
         "Fixed target for fc-fm1",
         units="Hz",
-        default=-29.5364700000,
+        default=645.702,
         decimals=10,
         ui_class=HighPrecisionScientificInput,
     )
@@ -87,6 +87,7 @@ class DualSidebandFrequencySweepProcedure(Procedure):
     Q_guess = FloatParameter("Q guess", units="unitless")
     resonance_pt = FloatParameter(
         "Resonance guess for fc+fm2 (Hz)",
+        default=1320.93209,
         units="Hz",
         decimals=10,
         ui_class=HighPrecisionScientificInput,
@@ -94,7 +95,7 @@ class DualSidebandFrequencySweepProcedure(Procedure):
     num_points = IntegerParameter("Number of points", default=21)
     reverse = BooleanParameter("Reverse sweep", default=False)
     initial_delay = FloatParameter("Initial delay (s)", units="s", default=1000.0)
-    delay = FloatParameter("Delay (s)", units="s", default=500.0)
+    delay = FloatParameter("Delay (s)", units="s", default=600.0)
     file_prefix = Parameter("File prefix", default="dual_sideband_frequency_sweep")
 
     zur_id = Parameter("Zurich addr.", default="dev4934")
