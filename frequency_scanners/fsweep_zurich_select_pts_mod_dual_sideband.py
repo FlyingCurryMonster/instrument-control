@@ -87,7 +87,7 @@ class DualSidebandFrequencySweepProcedure(Procedure):
     Q_guess = FloatParameter("Q guess", units="unitless")
     resonance_pt = FloatParameter(
         "Resonance guess for fc+fm2 (Hz)",
-        default=1320.93209,
+        default=1320.920,
         units="Hz",
         decimals=10,
         ui_class=HighPrecisionScientificInput,
