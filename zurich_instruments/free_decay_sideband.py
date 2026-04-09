@@ -43,75 +43,106 @@ def calculate_f0_infer(x: float, y: float, f_drive: float, k: float) -> float:
 
 
 class FreeDecaySidebandProcedure(Procedure):
-    """Drop the carrier drive to zero and record carrier/sideband demod responses."""
+    """Step sideband 1 drive from initial to final while recording carrier and both sidebands."""
+
+    MAX_SAFE_DRIVE = 10e-3
+    CARRIER_DEMOD_INDEX = 0
+    SIDEBAND1_SLOT_INDEX = 0
+    SIDEBAND2_SLOT_INDEX = 1
 
     iterations = IntegerParameter("Loop Iterations", default=1)
     delay_before_drop = FloatParameter("Initial delay", units="s", default=0.2)
-    measurement_time = FloatParameter("Measurement time", units="s", default=300)
-    ring_up_time = FloatParameter("Ring-up time", units="s", default=300)
+    measurement_time = FloatParameter("Measurement time", units="s", default=2000)
+    ring_up_time = FloatParameter("Ring-up time", units="s", default=1000)
     poll_interval = FloatParameter("Poll interval", units="s", default=1.0)
+
     use_current_carrier_drive = BooleanParameter(
         "Use current carrier amplitude/frequency", default=True
     )
-    carrier_drive_initial = FloatParameter("Carrier drive initial", units="V")
+    carrier_drive_initial = FloatParameter("Carrier drive initial", units="V", default=0.0)
     carrier_frequency_initial = FloatParameter(
         "Carrier frequency initial",
         units="Hz",
+        default=800,
         decimals=10,
         ui_class=HighPrecisionScientificInput,
     )
-    carrier_drive_final = FloatParameter(
-        "Carrier drive final", units="V", default=0.0
-    )
 
-    use_current_sideband_drive = BooleanParameter(
-        "Use current sideband amplitude/frequency", default=True
+    use_current_sideband1_drive = BooleanParameter(
+        "Use current sideband 1 amplitude/frequency", default=True
     )
-    initial_sideband_voltage = FloatParameter("Sideband drive amplitude", units="V")
-    initial_sideband_frequency = FloatParameter(
-        "Sideband drive frequency",
+    sideband1_drive_initial = FloatParameter("Sideband 1 drive initial", units="V", default=3e-3)
+    sideband1_drive_final = FloatParameter("Sideband 1 drive final", units="V", default=0.0)
+    sideband1_frequency_initial = FloatParameter(
+        "Sideband 1 drive frequency",
         units="Hz",
+        default=154.2985,
         decimals=10,
         ui_class=HighPrecisionScientificInput,
     )
 
-    use_current_time_constants = BooleanParameter("Use current demod time constants", default=True)
+    use_current_sideband2_drive = BooleanParameter(
+        "Use current sideband 2 amplitude/frequency", default=True
+    )
+    sideband2_drive_initial = FloatParameter("Sideband 2 drive initial", units="V", default=0.0)
+    sideband2_frequency_initial = FloatParameter(
+        "Sideband 2 drive frequency",
+        units="Hz",
+        default=520.9206,
+        decimals=10,
+        ui_class=HighPrecisionScientificInput,
+    )
+
+    use_current_time_constants = BooleanParameter(
+        "Use current demod time constants", default=True
+    )
     carrier_timeconstant = FloatParameter("Carrier time constant", units="s")
-    sideband_timeconstant = FloatParameter("Sideband time constant", units="s")
+    sideband1_timeconstant = FloatParameter("Sideband 1 time constant", units="s")
+    sideband2_timeconstant = FloatParameter("Sideband 2 time constant", units="s")
+
     use_current_sample_rates = BooleanParameter("Use current demod sample rates", default=False)
     demod_sample_rate = FloatParameter("Demod sample rate", units="Hz", default=8)
 
     settle_after_set = FloatParameter("Wait after setting values", units="s", default=0.2)
 
-    carrier_k = FloatParameter("Carrier k constant", units="1/V", default=3931072.9988525705)
-    carrier_V0 = FloatParameter(
-        "Carrier drive that k was obtained at", units="V", default=300e-6
-    )
-    sideband_k = FloatParameter("Sideband k constant", units="1/V", default=93260373.7208108)
-    sideband_V0 = FloatParameter(
-        "Sideband drive that k was obtained at", units="V", default=267.6e-6
+    sideband1_k = FloatParameter("Sideband 1 k constant", units="1/V", default=3931072.9988525705)
+    sideband1_V0 = FloatParameter(
+        "Sideband 1 drive that k was obtained at", units="V", default=300e-6
     )
 
-    carrier_xbkg = FloatParameter(
-        "Carrier X background before rotation", units="V", default=-2.16e-3
+    sideband2_k = FloatParameter("Sideband 2 k constant", units="1/V", default=93260373.7208108)
+    sideband2_V0 = FloatParameter(
+        "Sideband 2 drive that k was obtained at", units="V", default=370.9e-6
     )
-    carrier_ybkg = FloatParameter(
-        "Carrier Y background before rotation", units="V", default=0.7886e-3
+
+    sideband1_xbkg = FloatParameter(
+        "Sideband 1 X background before rotation", units="V", default=-2.16e-3
     )
-    sideband_xbkg = FloatParameter(
-        "Sideband X background before rotation", units="V", default=27.189e-6
+    sideband1_ybkg = FloatParameter(
+        "Sideband 1 Y background before rotation", units="V", default=0.7886e-3
     )
-    sideband_ybkg = FloatParameter(
-        "Sideband Y background before rotation", units="V", default=-12.67e-6
+    sideband2_xbkg = FloatParameter(
+        "Sideband 2 X background before rotation", units="V", default=27.189e-6
     )
-    carrier_phase_rotation = FloatParameter("Carrier phase rotation", units="deg", default=-112.87)
-    sideband_phase_rotation = FloatParameter("Sideband phase rotation", units="deg", default=-98.367)
+    sideband2_ybkg = FloatParameter(
+        "Sideband 2 Y background before rotation", units="V", default=-12.67e-6
+    )
+    carrier_phase_rotation = FloatParameter(
+        "Carrier phase rotation", units="deg", default=-112.87
+    )
+    sideband1_phase_rotation = FloatParameter(
+        "Sideband 1 phase rotation", units="deg", default=-95.3
+    )
+    sideband2_phase_rotation = FloatParameter(
+        "Sideband 2 phase rotation", units="deg", default=-98.367
+    )
 
     zur_id = Parameter("Zurich addr.", default="dev4934")
     carrier_osc_num = IntegerParameter("Carrier oscillator number", default=1)
-    carrier_demod_num = IntegerParameter("Carrier demodulator number", default=1)
-    sideband_demod_num = IntegerParameter("Sideband demodulator number", default=3)
-    sideband_osc_num = IntegerParameter("Sideband oscillator number", default=3)
+    sideband1_osc_num = IntegerParameter("Sideband 1 oscillator number", default=2)
+    sideband2_osc_num = IntegerParameter("Sideband 2 oscillator number", default=3)
+    sideband1_demod_num = IntegerParameter("Sideband 1 demodulator number", default=2)
+    sideband2_demod_num = IntegerParameter("Sideband 2 demodulator number", default=3)
     server_host = Parameter("Server host", default="192.168.77.26")
     server_port = IntegerParameter("Server port", default=8004)
     interface = Parameter("Interface", default="PCIe")
@@ -126,31 +157,37 @@ class FreeDecaySidebandProcedure(Procedure):
         "use_current_carrier_drive",
         "carrier_drive_initial",
         "carrier_frequency_initial",
-        "carrier_drive_final",
-        "use_current_sideband_drive",
-        "initial_sideband_voltage",
-        "initial_sideband_frequency",
+        "use_current_sideband1_drive",
+        "sideband1_drive_initial",
+        "sideband1_drive_final",
+        "sideband1_frequency_initial",
+        "use_current_sideband2_drive",
+        "sideband2_drive_initial",
+        "sideband2_frequency_initial",
         "use_current_time_constants",
         "carrier_timeconstant",
-        "sideband_timeconstant",
+        "sideband1_timeconstant",
+        "sideband2_timeconstant",
         "use_current_sample_rates",
         "demod_sample_rate",
         "settle_after_set",
-        "carrier_k",
-        "carrier_V0",
-        "sideband_k",
-        "sideband_V0",
-        "carrier_xbkg",
-        "carrier_ybkg",
-        "sideband_xbkg",
-        "sideband_ybkg",
+        "sideband1_k",
+        "sideband1_V0",
+        "sideband2_k",
+        "sideband2_V0",
+        "sideband1_xbkg",
+        "sideband1_ybkg",
+        "sideband2_xbkg",
+        "sideband2_ybkg",
         "carrier_phase_rotation",
-        "sideband_phase_rotation",
+        "sideband1_phase_rotation",
+        "sideband2_phase_rotation",
         "zur_id",
         "carrier_osc_num",
-        "carrier_demod_num",
-        "sideband_demod_num",
-        "sideband_osc_num",
+        "sideband1_osc_num",
+        "sideband2_osc_num",
+        "sideband1_demod_num",
+        "sideband2_demod_num",
         "server_host",
         "server_port",
         "interface",
@@ -161,72 +198,107 @@ class FreeDecaySidebandProcedure(Procedure):
         "iteration",
         "t_rel",
         "utc",
-        "carrier_drive_initial",
-        "carrier_drive_final",
+        "carrier_drive_before_drop",
+        "carrier_drive_after_drop",
         "carrier_freq_before_drop",
-        "sideband_drive_before_drop",
-        "sideband_freq_before_drop",
+        "sideband1_drive_before_drop",
+        "sideband1_drive_after_drop",
+        "sideband1_freq_before_drop",
+        "sideband2_drive_before_drop",
+        "sideband2_drive_after_drop",
+        "sideband2_freq_before_drop",
         "carrier_timeconstant",
-        "sideband_timeconstant",
+        "sideband1_timeconstant",
+        "sideband2_timeconstant",
         "carrier_sample_rate",
-        "sideband_sample_rate",
+        "sideband1_sample_rate",
+        "sideband2_sample_rate",
         "carrier_demod_freq",
-        "sideband_demod_freq",
+        "sideband1_demod_freq",
+        "sideband2_demod_freq",
         "carrier_X",
         "carrier_Y",
         "carrier_R",
         "carrier_phase",
-        "sideband_X",
-        "sideband_Y",
-        "sideband_R",
-        "sideband_phase",
+        "sideband1_X",
+        "sideband1_Y",
+        "sideband1_R",
+        "sideband1_phase",
+        "sideband2_X",
+        "sideband2_Y",
+        "sideband2_R",
+        "sideband2_phase",
         "carrier_Q_infer",
         "carrier_f0_infer",
         "carrier_tau_infer",
-        "sideband_Q_infer",
-        "sideband_f0_infer",
-        "sideband_tau_infer",
+        "sideband1_Q_infer",
+        "sideband1_f0_infer",
+        "sideband1_tau_infer",
+        "sideband2_Q_infer",
+        "sideband2_f0_infer",
+        "sideband2_tau_infer",
     ]
 
     def startup(self):
-        log.info("Connecting to Zurich Instrument for sideband free decay capture")
+        log.info("Connecting to Zurich Instrument for dual-sideband free decay capture")
 
         self.restore_carrier_amp = None
+        self.restore_sideband1_amp = None
+        self.restore_sideband2_amp = None
         self.restore_carrier_freq = None
-        self.restore_sideband_amp = None
-        self.restore_sideband_freq = None
+        self.restore_sideband1_freq = None
+        self.restore_sideband2_freq = None
         self.restore_carrier_tc = None
-        self.restore_sideband_tc = None
+        self.restore_sideband1_tc = None
+        self.restore_sideband2_tc = None
         self.restore_carrier_rate = None
-        self.restore_sideband_rate = None
+        self.restore_sideband1_rate = None
+        self.restore_sideband2_rate = None
 
         self.carrier_osc_index = self.carrier_osc_num - 1
-        self.carrier_demod_index = self.carrier_demod_num - 1
-        self.sideband_demod_index = self.sideband_demod_num - 1
-        self.sideband_osc_index = self.sideband_osc_num - 1
+        self.sideband1_osc_index = self.sideband1_osc_num - 1
+        self.sideband2_osc_index = self.sideband2_osc_num - 1
+        self.sideband1_demod_index = self.sideband1_demod_num - 1
+        self.sideband2_demod_index = self.sideband2_demod_num - 1
 
         self.daq = zhinst.core.ziDAQServer(
             self.server_host, int(self.server_port), api_level=6
         )
         self.daq.connectDevice(self.zur_id, interface=self.interface)
 
-        self.carrier_sample_path = f"/{self.zur_id}/demods/{self.carrier_demod_index}/sample"
-        self.sideband_sample_path = f"/{self.zur_id}/demods/{self.sideband_demod_index}/sample"
-        self.daq.set(f"/{self.zur_id}/demods/{self.carrier_demod_index}/enable", 1)
-        self.daq.set(f"/{self.zur_id}/demods/{self.sideband_demod_index}/enable", 1)
+        self.carrier_sample_path = f"/{self.zur_id}/demods/{self.CARRIER_DEMOD_INDEX}/sample"
+        self.sideband1_sample_path = f"/{self.zur_id}/demods/{self.sideband1_demod_index}/sample"
+        self.sideband2_sample_path = f"/{self.zur_id}/demods/{self.sideband2_demod_index}/sample"
+        self.daq.set(f"/{self.zur_id}/demods/{self.CARRIER_DEMOD_INDEX}/enable", 1)
+        self.daq.set(f"/{self.zur_id}/demods/{self.sideband1_demod_index}/enable", 1)
+        self.daq.set(f"/{self.zur_id}/demods/{self.sideband2_demod_index}/enable", 1)
 
         self.clockbase = self.daq.getInt(f"/{self.zur_id}/clockbase")
 
-        self.restore_carrier_amp = self._zurich_get_carrier_amp()
-        self.restore_carrier_freq = self._zurich_get_freq(self.carrier_osc_index)
-        self.restore_sideband_amp = self._zurich_get_sideband_amp()
-        self.restore_sideband_freq = self._zurich_get_freq(self.sideband_osc_index)
-        self.restore_carrier_tc = self._zurich_get_timeconstant(self.carrier_demod_index)
-        self.restore_sideband_tc = self._zurich_get_timeconstant(self.sideband_demod_index)
-        self.restore_carrier_rate = self._zurich_get_rate(self.carrier_demod_index)
-        self.restore_sideband_rate = self._zurich_get_rate(self.sideband_demod_index)
+        self.restore_carrier_amp = self._get_carrier_amp()
+        self.restore_sideband1_amp = self._get_sideband_amp(self.SIDEBAND1_SLOT_INDEX)
+        self.restore_sideband2_amp = self._get_sideband_amp(self.SIDEBAND2_SLOT_INDEX)
+        self.restore_carrier_freq = self._get_freq(self.carrier_osc_index)
+        self.restore_sideband1_freq = self._get_freq(self.sideband1_osc_index)
+        self.restore_sideband2_freq = self._get_freq(self.sideband2_osc_index)
+        self.restore_carrier_tc = self._get_timeconstant(self.CARRIER_DEMOD_INDEX)
+        self.restore_sideband1_tc = self._get_timeconstant(self.sideband1_demod_index)
+        self.restore_sideband2_tc = self._get_timeconstant(self.sideband2_demod_index)
+        self.restore_carrier_rate = self._get_rate(self.CARRIER_DEMOD_INDEX)
+        self.restore_sideband1_rate = self._get_rate(self.sideband1_demod_index)
+        self.restore_sideband2_rate = self._get_rate(self.sideband2_demod_index)
 
         self._validate_parameters()
+        self._validate_restore_state()
+        self._log_state(
+            "Startup restore state",
+            self.restore_carrier_amp,
+            self.restore_sideband1_amp,
+            self.restore_sideband2_amp,
+            self.restore_carrier_freq,
+            self.restore_sideband1_freq,
+            self.restore_sideband2_freq,
+        )
 
         if self.use_current_carrier_drive:
             self.target_carrier_amp = self.restore_carrier_amp
@@ -236,47 +308,58 @@ class FreeDecaySidebandProcedure(Procedure):
         else:
             self.target_carrier_amp = float(self.carrier_drive_initial)
             self.target_carrier_freq = float(self.carrier_frequency_initial)
-            self._set_carrier_drive(
-                amplitude=self.target_carrier_amp,
-                frequency=self.target_carrier_freq,
-            )
 
-        if self.use_current_sideband_drive:
-            self.target_sideband_amp = self.restore_sideband_amp
-            self.target_sideband_freq = self.restore_sideband_freq
-            self.initial_sideband_voltage = self.target_sideband_amp
-            self.initial_sideband_frequency = self.target_sideband_freq
+        if self.use_current_sideband1_drive:
+            self.target_sideband1_amp = self.restore_sideband1_amp
+            self.target_sideband1_freq = self.restore_sideband1_freq
+            self.sideband1_drive_initial = self.target_sideband1_amp
+            self.sideband1_frequency_initial = self.target_sideband1_freq
         else:
-            self.target_sideband_amp = float(self.initial_sideband_voltage)
-            self.target_sideband_freq = float(self.initial_sideband_frequency)
-            self._set_sideband_drive(
-                amplitude=self.target_sideband_amp,
-                frequency=self.target_sideband_freq,
-            )
+            self.target_sideband1_amp = float(self.sideband1_drive_initial)
+            self.target_sideband1_freq = float(self.sideband1_frequency_initial)
+
+        if self.use_current_sideband2_drive:
+            self.target_sideband2_amp = self.restore_sideband2_amp
+            self.target_sideband2_freq = self.restore_sideband2_freq
+            self.sideband2_drive_initial = self.target_sideband2_amp
+            self.sideband2_frequency_initial = self.target_sideband2_freq
+        else:
+            self.target_sideband2_amp = float(self.sideband2_drive_initial)
+            self.target_sideband2_freq = float(self.sideband2_frequency_initial)
 
         if self.use_current_time_constants:
             self.active_carrier_tc = self.restore_carrier_tc
-            self.active_sideband_tc = self.restore_sideband_tc
+            self.active_sideband1_tc = self.restore_sideband1_tc
+            self.active_sideband2_tc = self.restore_sideband2_tc
             self.carrier_timeconstant = self.active_carrier_tc
-            self.sideband_timeconstant = self.active_sideband_tc
+            self.sideband1_timeconstant = self.active_sideband1_tc
+            self.sideband2_timeconstant = self.active_sideband2_tc
         else:
             self.active_carrier_tc = float(self.carrier_timeconstant)
-            self.active_sideband_tc = float(self.sideband_timeconstant)
-            self._set_timeconstant(self.carrier_demod_index, self.active_carrier_tc)
-            self._set_timeconstant(self.sideband_demod_index, self.active_sideband_tc)
+            self.active_sideband1_tc = float(self.sideband1_timeconstant)
+            self.active_sideband2_tc = float(self.sideband2_timeconstant)
+            self._set_timeconstant(self.CARRIER_DEMOD_INDEX, self.active_carrier_tc)
+            self._set_timeconstant(self.sideband1_demod_index, self.active_sideband1_tc)
+            self._set_timeconstant(self.sideband2_demod_index, self.active_sideband2_tc)
 
         if self.use_current_sample_rates:
             self.active_carrier_rate = self.restore_carrier_rate
-            self.active_sideband_rate = self.restore_sideband_rate
+            self.active_sideband1_rate = self.restore_sideband1_rate
+            self.active_sideband2_rate = self.restore_sideband2_rate
         else:
             self.active_carrier_rate = float(self.demod_sample_rate)
-            self.active_sideband_rate = float(self.demod_sample_rate)
-            self._set_rate(self.carrier_demod_index, self.active_carrier_rate)
-            self._set_rate(self.sideband_demod_index, self.active_sideband_rate)
+            self.active_sideband1_rate = float(self.demod_sample_rate)
+            self.active_sideband2_rate = float(self.demod_sample_rate)
+            self._set_rate(self.CARRIER_DEMOD_INDEX, self.active_carrier_rate)
+            self._set_rate(self.sideband1_demod_index, self.active_sideband1_rate)
+            self._set_rate(self.sideband2_demod_index, self.active_sideband2_rate)
+
+        self._apply_initial_state()
 
         changed_anything = (
             (not self.use_current_carrier_drive)
-            or (not self.use_current_sideband_drive)
+            or (not self.use_current_sideband1_drive)
+            or (not self.use_current_sideband2_drive)
             or (not self.use_current_time_constants)
             or (not self.use_current_sample_rates)
         )
@@ -295,12 +378,14 @@ class FreeDecaySidebandProcedure(Procedure):
                     log.warning("Stop requested while waiting before iteration %d", iteration)
                     break
 
-            pre_drop_carrier_amp = self._zurich_get_carrier_amp()
-            pre_drop_carrier_freq = self._zurich_get_freq(self.carrier_osc_index)
-            pre_drop_sideband_amp = self._zurich_get_sideband_amp()
-            pre_drop_sideband_freq = self._zurich_get_freq(self.sideband_osc_index)
+            pre_drop_carrier_amp = self._get_carrier_amp()
+            pre_drop_carrier_freq = self._get_freq(self.carrier_osc_index)
+            pre_drop_sideband1_amp = self._get_sideband_amp(self.SIDEBAND1_SLOT_INDEX)
+            pre_drop_sideband1_freq = self._get_freq(self.sideband1_osc_index)
+            pre_drop_sideband2_amp = self._get_sideband_amp(self.SIDEBAND2_SLOT_INDEX)
+            pre_drop_sideband2_freq = self._get_freq(self.sideband2_osc_index)
 
-            self._set_carrier_amp(self.carrier_drive_final)
+            self._set_sideband1_amp(self.sideband1_drive_final)
             drop_time_utc = time.time()
 
             drop_device_ts = None
@@ -317,11 +402,15 @@ class FreeDecaySidebandProcedure(Procedure):
                 iteration=iteration,
                 drop_time_utc=drop_time_utc,
                 drop_device_ts=drop_device_ts,
-                carrier_drive_initial=pre_drop_carrier_amp,
-                carrier_drive_final=self.carrier_drive_final,
+                carrier_drive_before_drop=pre_drop_carrier_amp,
+                carrier_drive_after_drop=pre_drop_carrier_amp,
                 carrier_freq_before_drop=pre_drop_carrier_freq,
-                sideband_drive_before_drop=pre_drop_sideband_amp,
-                sideband_freq_before_drop=pre_drop_sideband_freq,
+                sideband1_drive_before_drop=pre_drop_sideband1_amp,
+                sideband1_drive_after_drop=self.sideband1_drive_final,
+                sideband1_freq_before_drop=pre_drop_sideband1_freq,
+                sideband2_drive_before_drop=pre_drop_sideband2_amp,
+                sideband2_drive_after_drop=pre_drop_sideband2_amp,
+                sideband2_freq_before_drop=pre_drop_sideband2_freq,
             )
 
             progress = 100 * (iteration + 1) / self.iterations
@@ -337,64 +426,12 @@ class FreeDecaySidebandProcedure(Procedure):
         self.emit("progress", 100)
 
     def shutdown(self):
-        log.info("Restoring original sideband free decay settings")
+        log.info("Restoring original dual-sideband free decay settings")
         try:
             self._restore_full_state()
         except Exception:
             log.exception("Unable to restore the original free decay settings.")
         log.info("Finished")
-
-    def check_parameters(self):
-        params = self.parameter_objects()
-
-        def ensure_set(name):
-            if params[name].value is None:
-                raise NameError(f"Missing value for '{name}'")
-
-        for required in [
-            "iterations",
-            "delay_before_drop",
-            "measurement_time",
-            "ring_up_time",
-            "poll_interval",
-            "use_current_carrier_drive",
-            "carrier_drive_final",
-            "use_current_sideband_drive",
-            "use_current_time_constants",
-            "settle_after_set",
-            "use_current_sample_rates",
-            "carrier_k",
-            "carrier_V0",
-            "sideband_k",
-            "sideband_V0",
-            "carrier_xbkg",
-            "carrier_ybkg",
-            "sideband_xbkg",
-            "sideband_ybkg",
-            "carrier_phase_rotation",
-            "sideband_phase_rotation",
-            "zur_id",
-            "carrier_osc_num",
-            "carrier_demod_num",
-            "sideband_demod_num",
-            "sideband_osc_num",
-            "server_host",
-            "server_port",
-            "interface",
-        ]:
-            ensure_set(required)
-
-        if not self.use_current_carrier_drive:
-            for name in ["carrier_drive_initial", "carrier_frequency_initial"]:
-                ensure_set(name)
-        if not self.use_current_sideband_drive:
-            for name in ["initial_sideband_voltage", "initial_sideband_frequency"]:
-                ensure_set(name)
-        if not self.use_current_time_constants:
-            for name in ["carrier_timeconstant", "sideband_timeconstant"]:
-                ensure_set(name)
-        if not self.use_current_sample_rates:
-            ensure_set("demod_sample_rate")
 
     def _validate_parameters(self):
         if self.iterations <= 0:
@@ -407,129 +444,128 @@ class FreeDecaySidebandProcedure(Procedure):
             raise ValueError("ring_up_time must be >= 0")
         if self.poll_interval <= 0:
             raise ValueError("poll_interval must be > 0")
-        if min(
-            self.carrier_osc_num,
-            self.carrier_demod_num,
-            self.sideband_demod_num,
-            self.sideband_osc_num,
-        ) <= 0:
-            raise ValueError("Demodulator and oscillator numbers are 1-based and must be > 0.")
-        if not self.use_current_carrier_drive:
-            if self.carrier_drive_initial is None or self.carrier_drive_initial < 0:
-                raise ValueError(
-                    "carrier_drive_initial must be >= 0 when not using current carrier drive."
-                )
-            if self.carrier_frequency_initial is None or self.carrier_frequency_initial <= 0:
-                raise ValueError(
-                    "carrier_frequency_initial must be > 0 when not using current carrier drive."
-                )
-        if self.carrier_drive_final < 0:
-            raise ValueError("carrier_drive_final must be >= 0")
         if self.settle_after_set < 0:
             raise ValueError("settle_after_set must be >= 0")
         if not self.use_current_sample_rates:
             if self.demod_sample_rate is None or self.demod_sample_rate <= 0:
                 raise ValueError("demod_sample_rate must be > 0 when not using current values.")
-        if not self.use_current_sideband_drive:
-            if self.initial_sideband_voltage is None or self.initial_sideband_voltage < 0:
-                raise ValueError(
-                    "initial_sideband_voltage must be >= 0 when not using current sideband drive."
-                )
-            if self.initial_sideband_frequency is None or self.initial_sideband_frequency <= 0:
-                raise ValueError(
-                    "initial_sideband_frequency must be > 0 when not using current sideband drive."
-                )
+        if min(
+            self.carrier_osc_num,
+            self.sideband1_osc_num,
+            self.sideband2_osc_num,
+            self.sideband1_demod_num,
+            self.sideband2_demod_num,
+        ) <= 0:
+            raise ValueError("Oscillator and demodulator numbers are 1-based and must be > 0.")
+        if self.sideband1_demod_num == 1 or self.sideband2_demod_num == 1:
+            raise ValueError("Carrier is fixed to demodulator 1 in the UI; sideband demodulators must be > 1.")
+
+        for label, amplitude in (
+            ("carrier_drive_initial", self.carrier_drive_initial),
+            ("sideband1_drive_initial", self.sideband1_drive_initial),
+            ("sideband1_drive_final", self.sideband1_drive_final),
+            ("sideband2_drive_initial", self.sideband2_drive_initial),
+        ):
+            if amplitude is not None:
+                self._validate_safe_amplitude(label, amplitude)
+
+        if not self.use_current_carrier_drive:
+            if self.carrier_frequency_initial is None or self.carrier_frequency_initial <= 0:
+                raise ValueError("carrier_frequency_initial must be > 0 when not using current carrier drive.")
+        if not self.use_current_sideband1_drive:
+            if self.sideband1_frequency_initial is None or self.sideband1_frequency_initial <= 0:
+                raise ValueError("sideband1_frequency_initial must be > 0 when not using current sideband 1 drive.")
+        if not self.use_current_sideband2_drive:
+            if self.sideband2_frequency_initial is None or self.sideband2_frequency_initial <= 0:
+                raise ValueError("sideband2_frequency_initial must be > 0 when not using current sideband 2 drive.")
         if not self.use_current_time_constants:
-            if self.carrier_timeconstant is None or self.carrier_timeconstant <= 0:
-                raise ValueError("carrier_timeconstant must be > 0 when not using current values.")
-            if self.sideband_timeconstant is None or self.sideband_timeconstant <= 0:
-                raise ValueError("sideband_timeconstant must be > 0 when not using current values.")
+            for label, value in (
+                ("carrier_timeconstant", self.carrier_timeconstant),
+                ("sideband1_timeconstant", self.sideband1_timeconstant),
+                ("sideband2_timeconstant", self.sideband2_timeconstant),
+            ):
+                if value is None or value <= 0:
+                    raise ValueError(f"{label} must be > 0 when not using current values.")
 
-    def _zurich_get_carrier_amp(self) -> float:
-        return self.daq.getDouble(f"/{self.zur_id}/mods/0/carrier/amplitude")
-
-    def _zurich_get_sideband_amp(self) -> float:
-        return self.daq.getDouble(f"/{self.zur_id}/mods/0/sidebands/1/amplitude")
-
-    def _set_carrier_amp(self, amplitude: float):
-        self.daq.setDouble(f"/{self.zur_id}/mods/0/carrier/amplitude", float(amplitude))
-        self.daq.sync()
-
-    def _set_carrier_drive(self, amplitude: float, frequency: float):
-        self.daq.setDouble(f"/{self.zur_id}/mods/0/carrier/amplitude", float(amplitude))
-        self.daq.setDouble(f"/{self.zur_id}/oscs/{self.carrier_osc_index}/freq", float(frequency))
-        self.daq.sync()
-
-    def _set_sideband_drive(self, amplitude: float, frequency: float):
-        self.daq.setDouble(f"/{self.zur_id}/mods/0/sidebands/1/amplitude", float(amplitude))
-        self.daq.setDouble(f"/{self.zur_id}/oscs/{self.sideband_osc_index}/freq", float(frequency))
-        self.daq.sync()
-
-    def _zurich_get_freq(self, osc_num: int) -> float:
-        return self.daq.getDouble(f"/{self.zur_id}/oscs/{osc_num}/freq")
-
-    def _zurich_get_timeconstant(self, demod_index: int) -> float:
-        return self.daq.getDouble(f"/{self.zur_id}/demods/{demod_index}/timeconstant")
-
-    def _set_timeconstant(self, demod_index: int, value: float):
-        self.daq.setDouble(f"/{self.zur_id}/demods/{demod_index}/timeconstant", float(value))
-
-    def _zurich_get_rate(self, demod_index: int) -> float:
-        return self.daq.getDouble(f"/{self.zur_id}/demods/{demod_index}/rate")
-
-    def _set_rate(self, demod_index: int, value: float):
-        self.daq.setDouble(f"/{self.zur_id}/demods/{demod_index}/rate", float(value))
-
-    def _restore_between_iterations(self):
-        self._set_carrier_drive(
-            amplitude=self.target_carrier_amp,
-            frequency=self.target_carrier_freq,
+    def _apply_initial_state(self):
+        self._set_carrier_drive(self.target_carrier_amp, self.target_carrier_freq)
+        self._set_sideband_drive(
+            self.SIDEBAND1_SLOT_INDEX,
+            self.sideband1_osc_index,
+            self.target_sideband1_amp,
+            self.target_sideband1_freq,
         )
         self._set_sideband_drive(
-            amplitude=self.target_sideband_amp,
-            frequency=self.target_sideband_freq,
+            self.SIDEBAND2_SLOT_INDEX,
+            self.sideband2_osc_index,
+            self.target_sideband2_amp,
+            self.target_sideband2_freq,
+        )
+        self._log_state(
+            "Initial applied state",
+            self.target_carrier_amp,
+            self.target_sideband1_amp,
+            self.target_sideband2_amp,
+            self.target_carrier_freq,
+            self.target_sideband1_freq,
+            self.target_sideband2_freq,
         )
 
+    def _restore_between_iterations(self):
+        self._apply_initial_state()
+
     def _restore_full_state(self):
-        if self.restore_carrier_amp is not None:
+        self._log_state(
+            "Requested restore state",
+            self.restore_carrier_amp,
+            self.restore_sideband1_amp,
+            self.restore_sideband2_amp,
+            self.restore_carrier_freq,
+            self.restore_sideband1_freq,
+            self.restore_sideband2_freq,
+        )
+        if self._is_safe_amplitude(self.restore_carrier_amp):
+            self.daq.setDouble(self._carrier_amp_path(), float(self.restore_carrier_amp))
+        else:
+            log.error("Skipping unsafe carrier restore amplitude %.9g V", self.restore_carrier_amp)
+        if self._is_safe_amplitude(self.restore_sideband1_amp):
             self.daq.setDouble(
-                f"/{self.zur_id}/mods/0/carrier/amplitude", float(self.restore_carrier_amp)
+                self._sideband_amp_path(self.SIDEBAND1_SLOT_INDEX),
+                float(self.restore_sideband1_amp),
+            )
+        else:
+            log.error(
+                "Skipping unsafe sideband 1 restore amplitude %.9g V",
+                self.restore_sideband1_amp,
+            )
+        if self._is_safe_amplitude(self.restore_sideband2_amp):
+            self.daq.setDouble(
+                self._sideband_amp_path(self.SIDEBAND2_SLOT_INDEX),
+                float(self.restore_sideband2_amp),
+            )
+        else:
+            log.error(
+                "Skipping unsafe sideband 2 restore amplitude %.9g V",
+                self.restore_sideband2_amp,
             )
         if self.restore_carrier_freq is not None:
-            self.daq.setDouble(
-                f"/{self.zur_id}/oscs/{self.carrier_osc_index}/freq",
-                float(self.restore_carrier_freq),
-            )
-        if self.restore_sideband_amp is not None:
-            self.daq.setDouble(
-                f"/{self.zur_id}/mods/0/sidebands/1/amplitude",
-                float(self.restore_sideband_amp),
-            )
-        if self.restore_sideband_freq is not None:
-            self.daq.setDouble(
-                f"/{self.zur_id}/oscs/{self.sideband_osc_index}/freq",
-                float(self.restore_sideband_freq),
-            )
+            self.daq.setDouble(self._freq_path(self.carrier_osc_index), float(self.restore_carrier_freq))
+        if self.restore_sideband1_freq is not None:
+            self.daq.setDouble(self._freq_path(self.sideband1_osc_index), float(self.restore_sideband1_freq))
+        if self.restore_sideband2_freq is not None:
+            self.daq.setDouble(self._freq_path(self.sideband2_osc_index), float(self.restore_sideband2_freq))
         if self.restore_carrier_tc is not None:
-            self.daq.setDouble(
-                f"/{self.zur_id}/demods/{self.carrier_demod_index}/timeconstant",
-                float(self.restore_carrier_tc),
-            )
-        if self.restore_sideband_tc is not None:
-            self.daq.setDouble(
-                f"/{self.zur_id}/demods/{self.sideband_demod_index}/timeconstant",
-                float(self.restore_sideband_tc),
-            )
+            self.daq.setDouble(self._timeconstant_path(self.CARRIER_DEMOD_INDEX), float(self.restore_carrier_tc))
+        if self.restore_sideband1_tc is not None:
+            self.daq.setDouble(self._timeconstant_path(self.sideband1_demod_index), float(self.restore_sideband1_tc))
+        if self.restore_sideband2_tc is not None:
+            self.daq.setDouble(self._timeconstant_path(self.sideband2_demod_index), float(self.restore_sideband2_tc))
         if self.restore_carrier_rate is not None:
-            self.daq.setDouble(
-                f"/{self.zur_id}/demods/{self.carrier_demod_index}/rate",
-                float(self.restore_carrier_rate),
-            )
-        if self.restore_sideband_rate is not None:
-            self.daq.setDouble(
-                f"/{self.zur_id}/demods/{self.sideband_demod_index}/rate",
-                float(self.restore_sideband_rate),
-            )
+            self.daq.setDouble(self._rate_path(self.CARRIER_DEMOD_INDEX), float(self.restore_carrier_rate))
+        if self.restore_sideband1_rate is not None:
+            self.daq.setDouble(self._rate_path(self.sideband1_demod_index), float(self.restore_sideband1_rate))
+        if self.restore_sideband2_rate is not None:
+            self.daq.setDouble(self._rate_path(self.sideband2_demod_index), float(self.restore_sideband2_rate))
         self.daq.sync()
 
     def _record_decay(
@@ -537,16 +573,21 @@ class FreeDecaySidebandProcedure(Procedure):
         iteration: int,
         drop_time_utc: float,
         drop_device_ts: Optional[float],
-        carrier_drive_initial: float,
-        carrier_drive_final: float,
+        carrier_drive_before_drop: float,
+        carrier_drive_after_drop: float,
         carrier_freq_before_drop: float,
-        sideband_drive_before_drop: float,
-        sideband_freq_before_drop: float,
+        sideband1_drive_before_drop: float,
+        sideband1_drive_after_drop: float,
+        sideband1_freq_before_drop: float,
+        sideband2_drive_before_drop: float,
+        sideband2_drive_after_drop: float,
+        sideband2_freq_before_drop: float,
     ):
         t_start = time.time()
         t_end = t_start + self.measurement_time
         self.daq.subscribe(self.carrier_sample_path)
-        self.daq.subscribe(self.sideband_sample_path)
+        self.daq.subscribe(self.sideband1_sample_path)
+        self.daq.subscribe(self.sideband2_sample_path)
 
         try:
             while time.time() < t_end and not self.should_stop():
@@ -558,18 +599,23 @@ class FreeDecaySidebandProcedure(Procedure):
                     iteration=iteration,
                     drop_time_utc=drop_time_utc,
                     drop_device_ts=drop_device_ts,
-                    carrier_drive_initial=carrier_drive_initial,
-                    carrier_drive_final=carrier_drive_final,
+                    carrier_drive_before_drop=carrier_drive_before_drop,
+                    carrier_drive_after_drop=carrier_drive_after_drop,
                     carrier_freq_before_drop=carrier_freq_before_drop,
-                    sideband_drive_before_drop=sideband_drive_before_drop,
-                    sideband_freq_before_drop=sideband_freq_before_drop,
+                    sideband1_drive_before_drop=sideband1_drive_before_drop,
+                    sideband1_drive_after_drop=sideband1_drive_after_drop,
+                    sideband1_freq_before_drop=sideband1_freq_before_drop,
+                    sideband2_drive_before_drop=sideband2_drive_before_drop,
+                    sideband2_drive_after_drop=sideband2_drive_after_drop,
+                    sideband2_freq_before_drop=sideband2_freq_before_drop,
                 )
                 iter_frac = min(1.0, (time.time() - t_start) / self.measurement_time)
                 overall = 100.0 * (iteration + iter_frac) / max(1, self.iterations)
                 self.emit("progress", overall)
         finally:
             self.daq.unsubscribe(self.carrier_sample_path)
-            self.daq.unsubscribe(self.sideband_sample_path)
+            self.daq.unsubscribe(self.sideband1_sample_path)
+            self.daq.unsubscribe(self.sideband2_sample_path)
 
     def _emit_from_poll(
         self,
@@ -577,17 +623,26 @@ class FreeDecaySidebandProcedure(Procedure):
         iteration: int,
         drop_time_utc: float,
         drop_device_ts: Optional[float],
-        carrier_drive_initial: float,
-        carrier_drive_final: float,
+        carrier_drive_before_drop: float,
+        carrier_drive_after_drop: float,
         carrier_freq_before_drop: float,
-        sideband_drive_before_drop: float,
-        sideband_freq_before_drop: float,
+        sideband1_drive_before_drop: float,
+        sideband1_drive_after_drop: float,
+        sideband1_freq_before_drop: float,
+        sideband2_drive_before_drop: float,
+        sideband2_drive_after_drop: float,
+        sideband2_freq_before_drop: float,
     ):
-        carrier_sample = self._extract_sample(poll_data, self.carrier_sample_path, self.carrier_demod_index)
-        sideband_sample = self._extract_sample(
-            poll_data, self.sideband_sample_path, self.sideband_demod_index
+        carrier_sample = self._extract_sample(
+            poll_data, self.carrier_sample_path, self.CARRIER_DEMOD_INDEX
         )
-        if not carrier_sample or not sideband_sample:
+        sideband1_sample = self._extract_sample(
+            poll_data, self.sideband1_sample_path, self.sideband1_demod_index
+        )
+        sideband2_sample = self._extract_sample(
+            poll_data, self.sideband2_sample_path, self.sideband2_demod_index
+        )
+        if not carrier_sample or not sideband1_sample or not sideband2_sample:
             return
 
         carrier_xs = np.asarray(carrier_sample.get("x", []), dtype=float)
@@ -595,11 +650,14 @@ class FreeDecaySidebandProcedure(Procedure):
         carrier_freqs = np.asarray(carrier_sample.get("frequency", []), dtype=float)
         carrier_timestamps = np.asarray(carrier_sample.get("timestamp", []), dtype=float)
 
-        sideband_xs = np.asarray(sideband_sample.get("x", []), dtype=float)
-        sideband_ys = np.asarray(sideband_sample.get("y", []), dtype=float)
-        sideband_freqs = np.asarray(sideband_sample.get("frequency", []), dtype=float)
+        sideband1_xs = np.asarray(sideband1_sample.get("x", []), dtype=float)
+        sideband1_ys = np.asarray(sideband1_sample.get("y", []), dtype=float)
+        sideband1_freqs = np.asarray(sideband1_sample.get("frequency", []), dtype=float)
 
-        times = None
+        sideband2_xs = np.asarray(sideband2_sample.get("x", []), dtype=float)
+        sideband2_ys = np.asarray(sideband2_sample.get("y", []), dtype=float)
+        sideband2_freqs = np.asarray(sideband2_sample.get("frequency", []), dtype=float)
+
         if carrier_timestamps.size and drop_device_ts is not None:
             times = (carrier_timestamps - drop_device_ts) / float(self.clockbase)
         else:
@@ -617,8 +675,10 @@ class FreeDecaySidebandProcedure(Procedure):
         n = min(
             len(carrier_xs),
             len(carrier_ys),
-            len(sideband_xs),
-            len(sideband_ys),
+            len(sideband1_xs),
+            len(sideband1_ys),
+            len(sideband2_xs),
+            len(sideband2_ys),
             len(times),
         )
         if n == 0:
@@ -632,42 +692,50 @@ class FreeDecaySidebandProcedure(Procedure):
                 self.carrier_ybkg,
                 self.carrier_phase_rotation,
             )
-            sideband_x, sideband_y = self._subtract_background_and_rotate(
-                sideband_xs[idx],
-                sideband_ys[idx],
-                self.sideband_xbkg,
-                self.sideband_ybkg,
-                self.sideband_phase_rotation,
+            sideband1_x, sideband1_y = self._subtract_background_and_rotate(
+                sideband1_xs[idx],
+                sideband1_ys[idx],
+                self.sideband1_xbkg,
+                self.sideband1_ybkg,
+                self.sideband1_phase_rotation,
+            )
+            sideband2_x, sideband2_y = self._subtract_background_and_rotate(
+                sideband2_xs[idx],
+                sideband2_ys[idx],
+                self.sideband2_xbkg,
+                self.sideband2_ybkg,
+                self.sideband2_phase_rotation,
             )
 
-            carrier_demod_freq = (
-                carrier_freqs[idx] if idx < len(carrier_freqs) else np.nan
-            )
-            sideband_demod_freq = (
-                sideband_freqs[idx] if idx < len(sideband_freqs) else np.nan
-            )
+            carrier_demod_freq = carrier_freqs[idx] if idx < len(carrier_freqs) else np.nan
+            sideband1_demod_freq = sideband1_freqs[idx] if idx < len(sideband1_freqs) else np.nan
+            sideband2_demod_freq = sideband2_freqs[idx] if idx < len(sideband2_freqs) else np.nan
 
             carrier_q, carrier_f0, carrier_tau = self._infer_metrics(
-                x=carrier_x,
-                y=carrier_y,
-                demod_freq=carrier_demod_freq,
-                drive_before_drop=carrier_drive_initial,
-                k_constant=self.carrier_k,
-                v0=self.carrier_V0,
+                carrier_x,
+                carrier_y,
+                carrier_demod_freq,
+                carrier_drive_before_drop,
+                self.carrier_k,
+                self.carrier_V0,
             )
-            sideband_q, sideband_f0, sideband_tau = self._infer_metrics(
-                x=sideband_x,
-                y=sideband_y,
-                demod_freq=sideband_demod_freq,
-                drive_before_drop=sideband_drive_before_drop,
-                k_constant=self.sideband_k,
-                v0=self.sideband_V0,
+            sideband1_q, sideband1_f0, sideband1_tau = self._infer_metrics(
+                sideband1_x,
+                sideband1_y,
+                sideband1_demod_freq,
+                sideband1_drive_before_drop,
+                self.sideband1_k,
+                self.sideband1_V0,
+            )
+            sideband2_q, sideband2_f0, sideband2_tau = self._infer_metrics(
+                sideband2_x,
+                sideband2_y,
+                sideband2_demod_freq,
+                sideband2_drive_before_drop,
+                self.sideband2_k,
+                self.sideband2_V0,
             )
 
-            carrier_r = np.hypot(carrier_x, carrier_y)
-            carrier_phase = np.degrees(np.arctan2(carrier_y, carrier_x))
-            sideband_r = np.hypot(sideband_x, sideband_y)
-            sideband_phase = np.degrees(np.arctan2(sideband_y, sideband_x))
             t_rel = float(times[idx])
             utc = drop_time_utc + t_rel
 
@@ -675,31 +743,45 @@ class FreeDecaySidebandProcedure(Procedure):
                 "iteration": int(iteration),
                 "t_rel": t_rel,
                 "utc": float(utc),
-                "carrier_drive_initial": float(carrier_drive_initial),
-                "carrier_drive_final": float(carrier_drive_final),
+                "carrier_drive_before_drop": float(carrier_drive_before_drop),
+                "carrier_drive_after_drop": float(carrier_drive_after_drop),
                 "carrier_freq_before_drop": float(carrier_freq_before_drop),
-                "sideband_drive_before_drop": float(sideband_drive_before_drop),
-                "sideband_freq_before_drop": float(sideband_freq_before_drop),
+                "sideband1_drive_before_drop": float(sideband1_drive_before_drop),
+                "sideband1_drive_after_drop": float(sideband1_drive_after_drop),
+                "sideband1_freq_before_drop": float(sideband1_freq_before_drop),
+                "sideband2_drive_before_drop": float(sideband2_drive_before_drop),
+                "sideband2_drive_after_drop": float(sideband2_drive_after_drop),
+                "sideband2_freq_before_drop": float(sideband2_freq_before_drop),
                 "carrier_timeconstant": float(self.active_carrier_tc),
-                "sideband_timeconstant": float(self.active_sideband_tc),
+                "sideband1_timeconstant": float(self.active_sideband1_tc),
+                "sideband2_timeconstant": float(self.active_sideband2_tc),
                 "carrier_sample_rate": float(self.active_carrier_rate),
-                "sideband_sample_rate": float(self.active_sideband_rate),
+                "sideband1_sample_rate": float(self.active_sideband1_rate),
+                "sideband2_sample_rate": float(self.active_sideband2_rate),
                 "carrier_demod_freq": float(carrier_demod_freq),
-                "sideband_demod_freq": float(sideband_demod_freq),
+                "sideband1_demod_freq": float(sideband1_demod_freq),
+                "sideband2_demod_freq": float(sideband2_demod_freq),
                 "carrier_X": float(carrier_x),
                 "carrier_Y": float(carrier_y),
-                "carrier_R": float(carrier_r),
-                "carrier_phase": float(carrier_phase),
-                "sideband_X": float(sideband_x),
-                "sideband_Y": float(sideband_y),
-                "sideband_R": float(sideband_r),
-                "sideband_phase": float(sideband_phase),
+                "carrier_R": float(np.hypot(carrier_x, carrier_y)),
+                "carrier_phase": float(np.degrees(np.arctan2(carrier_y, carrier_x))),
+                "sideband1_X": float(sideband1_x),
+                "sideband1_Y": float(sideband1_y),
+                "sideband1_R": float(np.hypot(sideband1_x, sideband1_y)),
+                "sideband1_phase": float(np.degrees(np.arctan2(sideband1_y, sideband1_x))),
+                "sideband2_X": float(sideband2_x),
+                "sideband2_Y": float(sideband2_y),
+                "sideband2_R": float(np.hypot(sideband2_x, sideband2_y)),
+                "sideband2_phase": float(np.degrees(np.arctan2(sideband2_y, sideband2_x))),
                 "carrier_Q_infer": float(carrier_q),
                 "carrier_f0_infer": float(carrier_f0),
                 "carrier_tau_infer": float(carrier_tau),
-                "sideband_Q_infer": float(sideband_q),
-                "sideband_f0_infer": float(sideband_f0),
-                "sideband_tau_infer": float(sideband_tau),
+                "sideband1_Q_infer": float(sideband1_q),
+                "sideband1_f0_infer": float(sideband1_f0),
+                "sideband1_tau_infer": float(sideband1_tau),
+                "sideband2_Q_infer": float(sideband2_q),
+                "sideband2_f0_infer": float(sideband2_f0),
+                "sideband2_tau_infer": float(sideband2_tau),
             }
             self.emit("results", data)
 
@@ -758,6 +840,102 @@ class FreeDecaySidebandProcedure(Procedure):
                 break
             time.sleep(min(0.1, end_time - time.time()))
 
+    def _carrier_amp_path(self) -> str:
+        return f"/{self.zur_id}/mods/0/carrier/amplitude"
+
+    def _sideband_amp_path(self, slot_index: int) -> str:
+        return f"/{self.zur_id}/mods/0/sidebands/{slot_index}/amplitude"
+
+    def _freq_path(self, osc_index: int) -> str:
+        return f"/{self.zur_id}/oscs/{osc_index}/freq"
+
+    def _timeconstant_path(self, demod_index: int) -> str:
+        return f"/{self.zur_id}/demods/{demod_index}/timeconstant"
+
+    def _rate_path(self, demod_index: int) -> str:
+        return f"/{self.zur_id}/demods/{demod_index}/rate"
+
+    def _get_carrier_amp(self) -> float:
+        return self.daq.getDouble(self._carrier_amp_path())
+
+    def _get_sideband_amp(self, slot_index: int) -> float:
+        return self.daq.getDouble(self._sideband_amp_path(slot_index))
+
+    def _set_carrier_amp(self, amplitude: float):
+        self._validate_safe_amplitude("carrier amplitude", amplitude)
+        self.daq.setDouble(self._carrier_amp_path(), float(amplitude))
+        self.daq.sync()
+
+    def _set_carrier_drive(self, amplitude: float, frequency: float):
+        self._validate_safe_amplitude("carrier amplitude", amplitude)
+        self.daq.setDouble(self._carrier_amp_path(), float(amplitude))
+        self.daq.setDouble(self._freq_path(self.carrier_osc_index), float(frequency))
+        self.daq.sync()
+
+    def _set_sideband1_amp(self, amplitude: float):
+        self._validate_safe_amplitude("sideband 1 amplitude", amplitude)
+        self.daq.setDouble(self._sideband_amp_path(self.SIDEBAND1_SLOT_INDEX), float(amplitude))
+        self.daq.sync()
+
+    def _set_sideband_drive(self, slot_index: int, osc_index: int, amplitude: float, frequency: float):
+        self._validate_safe_amplitude(f"sideband {slot_index} amplitude", amplitude)
+        self.daq.setDouble(self._sideband_amp_path(slot_index), float(amplitude))
+        self.daq.setDouble(self._freq_path(osc_index), float(frequency))
+        self.daq.sync()
+
+    def _get_freq(self, osc_num: int) -> float:
+        return self.daq.getDouble(self._freq_path(osc_num))
+
+    def _get_timeconstant(self, demod_index: int) -> float:
+        return self.daq.getDouble(self._timeconstant_path(demod_index))
+
+    def _set_timeconstant(self, demod_index: int, value: float):
+        self.daq.setDouble(self._timeconstant_path(demod_index), float(value))
+
+    def _get_rate(self, demod_index: int) -> float:
+        return self.daq.getDouble(self._rate_path(demod_index))
+
+    def _set_rate(self, demod_index: int, value: float):
+        self.daq.setDouble(self._rate_path(demod_index), float(value))
+
+    def _validate_restore_state(self):
+        self._validate_safe_amplitude("restore_carrier_amp", self.restore_carrier_amp)
+        self._validate_safe_amplitude("restore_sideband1_amp", self.restore_sideband1_amp)
+        self._validate_safe_amplitude("restore_sideband2_amp", self.restore_sideband2_amp)
+
+    def _validate_safe_amplitude(self, label: str, amplitude: float):
+        if not self._is_safe_amplitude(amplitude):
+            raise ValueError(
+                f"{label}={float(amplitude):.9g} V exceeds the hard safety limit of "
+                f"{self.MAX_SAFE_DRIVE:.9g} V."
+            )
+
+    def _is_safe_amplitude(self, amplitude: float) -> bool:
+        value = float(amplitude)
+        return 0 <= value <= self.MAX_SAFE_DRIVE
+
+    def _log_state(
+        self,
+        label: str,
+        carrier_amp: float,
+        sideband1_amp: float,
+        sideband2_amp: float,
+        carrier_freq: float,
+        sideband1_freq: float,
+        sideband2_freq: float,
+    ):
+        log.info(
+            "%s: carrier_amp=%.9g V sideband1_amp=%.9g V sideband2_amp=%.9g V "
+            "carrier_freq=%.10f Hz sideband1_freq=%.10f Hz sideband2_freq=%.10f Hz",
+            label,
+            carrier_amp,
+            sideband1_amp,
+            sideband2_amp,
+            carrier_freq,
+            sideband1_freq,
+            sideband2_freq,
+        )
+
 
 class FreeDecaySidebandWindow(ManagedDockWindow):
     def __init__(self):
@@ -767,17 +945,23 @@ class FreeDecaySidebandWindow(ManagedDockWindow):
             x_axis="t_rel",
             y_axis="carrier_X",
         )
-        sideband_plot = PlotWidget(
-            name="Sideband R vs time",
+        sideband1_plot = PlotWidget(
+            name="Sideband 1 R vs time",
             columns=FreeDecaySidebandProcedure.DATA_COLUMNS,
             x_axis="t_rel",
-            y_axis="sideband_R",
+            y_axis="sideband1_R",
+        )
+        sideband2_plot = PlotWidget(
+            name="Sideband 2 R vs time",
+            columns=FreeDecaySidebandProcedure.DATA_COLUMNS,
+            x_axis="t_rel",
+            y_axis="sideband2_R",
         )
         phase_plot = PlotWidget(
             name="Phases vs time",
             columns=FreeDecaySidebandProcedure.DATA_COLUMNS,
             x_axis="t_rel",
-            y_axis="carrier_phase",
+            y_axis="sideband1_phase",
         )
 
         super().__init__(
@@ -785,12 +969,19 @@ class FreeDecaySidebandWindow(ManagedDockWindow):
             inputs=FreeDecaySidebandProcedure.PARAMETERS,
             displays=FreeDecaySidebandProcedure.PARAMETERS,
             x_axis=["t_rel"],
-            y_axis=["carrier_X", "carrier_R", "carrier_phase", "sideband_R"],
-            widget_list=(carrier_plot, sideband_plot, phase_plot),
+            y_axis=[
+                "carrier_X",
+                "carrier_R",
+                "sideband1_R",
+                "sideband2_R",
+                "sideband1_phase",
+                "sideband2_phase",
+            ],
+            widget_list=(carrier_plot, sideband1_plot, sideband2_plot, phase_plot),
             inputs_in_scrollarea=True,
         )
 
-        self.setWindowTitle("Zurich Sideband Free Decay")
+        self.setWindowTitle("Zurich Dual-Sideband Free Decay")
         self.filename_prefix = "free-decay-sideband"
         self.directory = self._default_data_dir()
 
