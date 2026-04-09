@@ -228,9 +228,6 @@ class FreeDecaySidebandProcedure(Procedure):
         "sideband2_Y",
         "sideband2_R",
         "sideband2_phase",
-        "carrier_Q_infer",
-        "carrier_f0_infer",
-        "carrier_tau_infer",
         "sideband1_Q_infer",
         "sideband1_f0_infer",
         "sideband1_tau_infer",
@@ -711,14 +708,6 @@ class FreeDecaySidebandProcedure(Procedure):
             sideband1_demod_freq = sideband1_freqs[idx] if idx < len(sideband1_freqs) else np.nan
             sideband2_demod_freq = sideband2_freqs[idx] if idx < len(sideband2_freqs) else np.nan
 
-            carrier_q, carrier_f0, carrier_tau = self._infer_metrics(
-                carrier_x,
-                carrier_y,
-                carrier_demod_freq,
-                carrier_drive_before_drop,
-                self.carrier_k,
-                self.carrier_V0,
-            )
             sideband1_q, sideband1_f0, sideband1_tau = self._infer_metrics(
                 sideband1_x,
                 sideband1_y,
@@ -773,9 +762,6 @@ class FreeDecaySidebandProcedure(Procedure):
                 "sideband2_Y": float(sideband2_y),
                 "sideband2_R": float(np.hypot(sideband2_x, sideband2_y)),
                 "sideband2_phase": float(np.degrees(np.arctan2(sideband2_y, sideband2_x))),
-                "carrier_Q_infer": float(carrier_q),
-                "carrier_f0_infer": float(carrier_f0),
-                "carrier_tau_infer": float(carrier_tau),
                 "sideband1_Q_infer": float(sideband1_q),
                 "sideband1_f0_infer": float(sideband1_f0),
                 "sideband1_tau_infer": float(sideband1_tau),
