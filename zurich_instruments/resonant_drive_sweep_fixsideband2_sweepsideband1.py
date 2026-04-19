@@ -43,7 +43,7 @@ def calculate_f0_infer(x: float, y: float, f_drive: float, k: float) -> float:
     return f_drive * (1 + y / (x * 2 * q))
 
 
-class ResonantDriveSweepSideband1FixedSideband2Procedure(Procedure):
+class ResonantDriveSweepFixSideband2SweepSideband1Procedure(Procedure):
     """Sweep sideband 1 drive while retuning sideband 1 and holding sideband 2 fixed."""
 
     MAX_SAFE_DRIVE = 10e-3
@@ -126,7 +126,7 @@ class ResonantDriveSweepSideband1FixedSideband2Procedure(Procedure):
     fixed_delay_time = FloatParameter("Fixed delay time", units="s", default=1000.0)
     delay_mode = Parameter("Delay mode (fixed|max|tau)", default="fixed")
 
-    file_prefix = Parameter("File prefix", default="resonant_drive_sweep_sideband1_fixed_sideband2")
+    file_prefix = Parameter("File prefix", default="resonant_drive_sweep_fixsideband2_sweepsideband1")
     zur_id = Parameter("Zurich addr.", default="dev4934")
     carrier_osc_num = IntegerParameter("Carrier oscillator number", default=1)
     sideband1_osc_num = IntegerParameter("Sideband 1 oscillator number", default=2)
@@ -797,37 +797,37 @@ class ResonantDriveSweepSideband1FixedSideband2Procedure(Procedure):
         )
 
 
-class ResonantDriveSweepSideband1FixedSideband2Window(ManagedDockWindow):
+class ResonantDriveSweepFixSideband2SweepSideband1Window(ManagedDockWindow):
     def __init__(self):
         drive_plot = PlotWidget(
             name="Sideband 1 Drive Sweep",
-            columns=ResonantDriveSweepSideband1FixedSideband2Procedure.DATA_COLUMNS,
+            columns=ResonantDriveSweepFixSideband2SweepSideband1Procedure.DATA_COLUMNS,
             x_axis="sideband1_drive_set",
             y_axis="sideband1_f0_infer",
         )
         phase_plot = PlotWidget(
             name="Sideband 1 Phase",
-            columns=ResonantDriveSweepSideband1FixedSideband2Procedure.DATA_COLUMNS,
+            columns=ResonantDriveSweepFixSideband2SweepSideband1Procedure.DATA_COLUMNS,
             x_axis="sideband1_drive_set",
             y_axis="sideband1_phase",
         )
         q_plot = PlotWidget(
             name="Sideband 1 Q",
-            columns=ResonantDriveSweepSideband1FixedSideband2Procedure.DATA_COLUMNS,
+            columns=ResonantDriveSweepFixSideband2SweepSideband1Procedure.DATA_COLUMNS,
             x_axis="sideband1_drive_set",
             y_axis="sideband1_Q_infer",
         )
         sideband2_plot = PlotWidget(
             name="Sideband 2 Diagnostics",
-            columns=ResonantDriveSweepSideband1FixedSideband2Procedure.DATA_COLUMNS,
+            columns=ResonantDriveSweepFixSideband2SweepSideband1Procedure.DATA_COLUMNS,
             x_axis="sideband1_drive_set",
             y_axis="sideband2_R",
         )
 
         super().__init__(
-            procedure_class=ResonantDriveSweepSideband1FixedSideband2Procedure,
-            inputs=ResonantDriveSweepSideband1FixedSideband2Procedure.PARAMETERS,
-            displays=ResonantDriveSweepSideband1FixedSideband2Procedure.PARAMETERS,
+            procedure_class=ResonantDriveSweepFixSideband2SweepSideband1Procedure,
+            inputs=ResonantDriveSweepFixSideband2SweepSideband1Procedure.PARAMETERS,
+            displays=ResonantDriveSweepFixSideband2SweepSideband1Procedure.PARAMETERS,
             x_axis=["sideband1_drive_set"],
             y_axis=[
                 "sideband1_f0_infer",
@@ -838,7 +838,7 @@ class ResonantDriveSweepSideband1FixedSideband2Window(ManagedDockWindow):
             widget_list=(drive_plot, phase_plot, q_plot, sideband2_plot),
             inputs_in_scrollarea=True,
         )
-        self.setWindowTitle("Zurich Resonant Drive Sweep Sideband1 Fixed Sideband2")
+        self.setWindowTitle("Zurich Resonant Drive Sweep Fix Sideband2 Sweep Sideband1")
         self.directory = r"D:/Data/Fall25-Summer26/TO freq-sweeps"
 
     def queue(self):
@@ -853,6 +853,6 @@ class ResonantDriveSweepSideband1FixedSideband2Window(ManagedDockWindow):
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication([])
-    window = ResonantDriveSweepSideband1FixedSideband2Window()
+    window = ResonantDriveSweepFixSideband2SweepSideband1Window()
     window.show()
     sys.exit(app.exec_())
