@@ -75,7 +75,7 @@ class OffResonanceBackgroundProcedure(Procedure):
         "Resonance frequency for left/right labels", units="Hz", default=0.0
     )
 
-    settle_time = FloatParameter("Settle time", units="s", default=10.0)
+    settle_time = FloatParameter("Settle time", units="s", default=150.0)
     sample_duration = FloatParameter("Sample duration", units="s", default=5.0)
     poll_interval = FloatParameter("Poll interval", units="s", default=0.5)
     min_samples = IntegerParameter("Minimum samples", default=3)
