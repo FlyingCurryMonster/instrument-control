@@ -32,6 +32,10 @@ log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
 DEFAULT_RESULT_DIR = Path(r"D:/Data/Fall25-Summer26/TO off-resonance background")
+DEFAULT_TARGET_CSV = Path(__file__).with_name(
+    "off_resonance_targets_147mK_2026-04-24.csv"
+)
+DEFAULT_RESONANCE_FREQUENCY = 1320.9285
 
 
 def parse_si_value(value) -> float:
@@ -68,14 +72,16 @@ def parse_si_value(value) -> float:
 class OffResonanceBackgroundProcedure(Procedure):
     """Measure averaged X/Y background at explicitly requested off-resonance points."""
 
-    target_csv_path = Parameter("Target csv path", default="")
+    target_csv_path = Parameter("Target csv path", default=str(DEFAULT_TARGET_CSV))
     drive_voltages = Parameter("Drive voltages (comma/space)", default="")
     drive_frequencies = Parameter("Drive frequencies (comma/space)", default="")
     resonance_frequency = FloatParameter(
-        "Resonance frequency for left/right labels", units="Hz", default=0.0
+        "Resonance frequency for left/right labels",
+        units="Hz",
+        default=DEFAULT_RESONANCE_FREQUENCY,
     )
 
-    settle_time = FloatParameter("Settle time", units="s", default=150.0)
+    settle_time = FloatParameter("Settle time", units="s", default=120)
     sample_duration = FloatParameter("Sample duration", units="s", default=5.0)
     poll_interval = FloatParameter("Poll interval", units="s", default=0.5)
     min_samples = IntegerParameter("Minimum samples", default=3)
