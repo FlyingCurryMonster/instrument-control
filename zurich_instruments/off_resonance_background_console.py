@@ -33,9 +33,9 @@ log.addHandler(logging.NullHandler())
 
 DEFAULT_RESULT_DIR = Path(r"D:/Data/Fall25-Summer26/TO off-resonance background")
 DEFAULT_TARGET_CSV = Path(__file__).with_name(
-    "off_resonance_targets_147mK_2026-04-24.csv"
+    "off_resonance_targets_320mK_2026-04-25.csv"
 )
-DEFAULT_RESONANCE_FREQUENCY = 1320.9285
+DEFAULT_RESONANCE_FREQUENCY = 1320.92035
 
 
 def parse_si_value(value) -> float:
