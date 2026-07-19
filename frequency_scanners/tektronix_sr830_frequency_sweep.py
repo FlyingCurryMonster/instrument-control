@@ -296,7 +296,7 @@ class TektronixSR830FrequencySweepWindow(ManagedDockWindow):
             x_axis=["frequency"],
             y_axis=["X", "Y", "R", "theta"],
             widget_list=(magnitude_plot, phase_plot),
-            directory_input=True,
+            # directory_input=True,
             inputs_in_scrollarea=True,
         )
         self.setWindowTitle("Tektronix AFG and SR830 Frequency Sweep")
