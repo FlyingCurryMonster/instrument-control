@@ -23,7 +23,7 @@ from pymeasure.instruments.tektronix import AFG3152C
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 
-DEFAULT_DATA_DIRECTORY = r"D:/Data/Fall25-Summer26/TO freq-sweeps"
+DEFAULT_DATA_DIRECTORY = r"D:/Data/Fall25-Summer26/SQUID bode"
 
 _SHORT_GPIB_ADDRESS = re.compile(r"^(\d+)::(\d+)$")
 _FULL_GPIB_ADDRESS = re.compile(r"^GPIB(\d+)::(\d+)::INSTR$", re.IGNORECASE)
