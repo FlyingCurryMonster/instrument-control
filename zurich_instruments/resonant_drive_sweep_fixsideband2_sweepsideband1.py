@@ -123,6 +123,27 @@ class ResonantDriveSweepFixSideband2SweepSideband1Procedure(Procedure):
     retune_down_sweep = BooleanParameter("Retune to resonance on down sweep", default=True)
     phase_band = FloatParameter("Sideband 1 phase band", units="deg", default=6.0)
     max_iterations = IntegerParameter("Max retune iterations", default=5)
+    lock_fixed_sideband_resonance = BooleanParameter(
+        "Keep fixed sideband on resonance",
+        default=True,
+    )
+    fixed_sideband_linewidth = FloatParameter(
+        "Fixed sideband linewidth",
+        units="Hz",
+        default=1.47e-3,
+        decimals=10,
+        ui_class=HighPrecisionScientificInput,
+    )
+    fixed_sideband_phase_band = FloatParameter(
+        "Fixed sideband phase band",
+        units="deg",
+        default=6.0,
+    )
+    fixed_sideband_max_iterations = IntegerParameter(
+        "Fixed sideband max retune iterations",
+        default=3,
+    )
+    fixed_sideband_delay = FloatParameter("Fixed sideband delay", units="s", default=1000.0)
     fixed_delay_time = FloatParameter("Fixed delay time", units="s", default=1000.0)
     delay_mode = Parameter("Delay mode (fixed|max|tau)", default="fixed")
 
@@ -167,6 +188,11 @@ class ResonantDriveSweepFixSideband2SweepSideband1Procedure(Procedure):
         "retune_down_sweep",
         "phase_band",
         "max_iterations",
+        "lock_fixed_sideband_resonance",
+        "fixed_sideband_linewidth",
+        "fixed_sideband_phase_band",
+        "fixed_sideband_max_iterations",
+        "fixed_sideband_delay",
         "fixed_delay_time",
         "delay_mode",
         "file_prefix",
@@ -227,12 +253,17 @@ class ResonantDriveSweepFixSideband2SweepSideband1Procedure(Procedure):
         "in_band",
         "iterations",
         "retuned",
+        "fixed_sideband_lock_in_band",
+        "fixed_sideband_lock_retuned",
+        "fixed_sideband_lock_iterations",
+        "fixed_sideband_frequency_correction",
         "delay_used",
     ]
 
     def startup(self):
         log.info("Starting resonant sideband 1 drive sweep with fixed sideband 2")
         self._validate_parameters()
+        self.current_sideband2_target = float(self.sideband2_fixed_target)
 
         self.carrier_osc_index = self.carrier_osc_num - 1
         self.sideband1_osc_index = self.sideband1_osc_num - 1
@@ -363,20 +394,32 @@ class ResonantDriveSweepFixSideband2SweepSideband1Procedure(Procedure):
         iterations = 0
         retuned = False
         last_delay = 0.0
+        use_existing_state = False
+        fixed_lock_iterations = 0
+        fixed_lock_retuned = False
+        fixed_frequency_correction = 0.0
 
         while True:
             if self.should_stop():
                 return current_target, False
 
-            self._set_sideband1_drive(drive, current_target)
-            last_delay = self._delay_after_set(self.last_tau)
-            if not self._sleep_with_abort(last_delay):
-                return current_target, False
+            if use_existing_state:
+                use_existing_state = False
+            else:
+                self._set_sideband1_drive(drive, current_target)
+                last_delay = self._delay_after_set(self.last_tau)
+                if not self._sleep_with_abort(last_delay):
+                    return current_target, False
 
             measurement = self._measure_once()
             iterations += 1
 
             in_band = abs(measurement["sideband1_phase"]) <= self.phase_band
+            fixed_sideband_phase = float(measurement["sideband2_phase"])
+            fixed_sideband_in_band = (
+                not self.lock_fixed_sideband_resonance
+                or abs(fixed_sideband_phase) <= self.fixed_sideband_phase_band
+            )
             self._update_last_tau(measurement)
             measurement.update(
                 {
@@ -391,26 +434,54 @@ class ResonantDriveSweepFixSideband2SweepSideband1Procedure(Procedure):
                     "f_sideband1_osc_set": float(
                         self._sideband1_osc_freq_for_target(current_target)
                     ),
-                    "f_sideband2_target_set": float(self.sideband2_fixed_target),
+                    "f_sideband2_target_set": float(self.current_sideband2_target),
                     "f_sideband2_osc_set": float(self._sideband2_osc_freq()),
                     "in_band": int(in_band),
                     "iterations": int(iterations),
                     "retuned": int(retuned),
+                    "fixed_sideband_lock_in_band": int(fixed_sideband_in_band),
+                    "fixed_sideband_lock_retuned": int(fixed_lock_retuned),
+                    "fixed_sideband_lock_iterations": int(fixed_lock_iterations),
+                    "fixed_sideband_frequency_correction": float(fixed_frequency_correction),
                     "delay_used": float(last_delay),
                 }
             )
             self.emit("results", measurement)
             self.step_index += 1
+            fixed_frequency_correction = 0.0
 
-            if in_band or not retune or iterations >= self.max_iterations:
+            if not in_band and retune and iterations < self.max_iterations:
+                f0_infer = measurement["sideband1_f0_infer"]
+                if not np.isfinite(f0_infer):
+                    return current_target, True
+                current_target = float(f0_infer)
+                retuned = True
+                continue
+
+            if not in_band or not retune or iterations >= self.max_iterations:
                 return current_target, True
 
-            f0_infer = measurement["sideband1_f0_infer"]
-            if not np.isfinite(f0_infer):
-                return current_target, True
+            if (
+                not fixed_sideband_in_band
+                and self.lock_fixed_sideband_resonance
+                and fixed_lock_iterations < self.fixed_sideband_max_iterations
+            ):
+                fixed_frequency_correction = self._fixed_sideband_frequency_correction(
+                    fixed_sideband_phase
+                )
+                self.current_sideband2_target = float(
+                    self.current_sideband2_target + fixed_frequency_correction
+                )
+                fixed_lock_iterations += 1
+                fixed_lock_retuned = True
+                self._apply_current_sideband2_target()
+                last_delay = max(0.0, float(self.fixed_sideband_delay))
+                if not self._sleep_with_abort(last_delay):
+                    return current_target, False
+                use_existing_state = True
+                continue
 
-            current_target = float(f0_infer)
-            retuned = True
+            return current_target, True
 
     def _set_fixed_channels(self):
         self._validate_safe_amplitude("carrier_drive", self.carrier_drive)
@@ -433,6 +504,13 @@ class ResonantDriveSweepFixSideband2SweepSideband1Procedure(Procedure):
         self.daq.setDouble(
             self._freq_path(self.sideband1_osc_index),
             float(self._sideband1_osc_freq_for_target(target_frequency)),
+        )
+        self.daq.sync()
+
+    def _apply_current_sideband2_target(self) -> None:
+        self.daq.setDouble(
+            self._freq_path(self.sideband2_osc_index),
+            float(self._sideband2_osc_freq()),
         )
         self.daq.sync()
 
@@ -640,6 +718,14 @@ class ResonantDriveSweepFixSideband2SweepSideband1Procedure(Procedure):
             raise ValueError("Max retune iterations must be >= 1.")
         if self.phase_band < 0:
             raise ValueError("Phase band must be >= 0.")
+        if self.fixed_sideband_linewidth <= 0:
+            raise ValueError("Fixed sideband linewidth must be > 0.")
+        if self.fixed_sideband_phase_band < 0:
+            raise ValueError("Fixed sideband phase band must be >= 0.")
+        if self.fixed_sideband_max_iterations < 0:
+            raise ValueError("Fixed sideband max retune iterations must be >= 0.")
+        if self.fixed_sideband_delay < 0:
+            raise ValueError("Fixed sideband delay must be >= 0.")
         if self.fixed_delay_time < 0:
             raise ValueError("Fixed delay time must be >= 0.")
         if self.carrier_frequency <= 0:
@@ -678,13 +764,20 @@ class ResonantDriveSweepFixSideband2SweepSideband1Procedure(Procedure):
         return osc_freq
 
     def _sideband2_osc_freq(self) -> float:
-        osc_freq = float(self.sideband2_fixed_target) - float(self.carrier_frequency)
+        target_frequency = float(
+            getattr(self, "current_sideband2_target", self.sideband2_fixed_target)
+        )
+        osc_freq = target_frequency - float(self.carrier_frequency)
         if osc_freq < 0:
             raise ValueError(
                 "Fixed sideband 2 target %.10f Hz is below carrier %.10f Hz, producing negative fm2."
-                % (self.sideband2_fixed_target, self.carrier_frequency)
+                % (target_frequency, self.carrier_frequency)
             )
         return osc_freq
+
+    def _fixed_sideband_frequency_correction(self, phase_deg: float) -> float:
+        return float(self.fixed_sideband_linewidth) * float(phase_deg) / 90.0
+
 
     def _restore_state(self) -> None:
         self._log_state(
